@@ -47,16 +47,34 @@ hands tasks to people with due dates, a run of the day, a budget split, invitati
 You review and switch off anything before applying. Afterwards it suggests next steps from the live event:
 chase RSVPs, hand off unassigned tasks, nudge overdue owners, brief the food team on dietary needs.
 
-It is a **simulated AI**: `src/planner.js` is a rule-based engine and no model is called. `draftPlan` and
-`suggestions` are the two functions to replace with a real model; they only produce proposals, and
-everything is applied through the normal store actions.
+### Connecting a real model
+
+Open **Planner → AI model**. With a model connected, the plan is written from your notes and you can ask
+for things in your own words; the model's proposals are validated and you approve every action. With no
+model, the planner falls back to its built-in rules and says so.
+
+| Option | Cost | Needs |
+|---|---|---|
+| Claude | Included with the claude.ai preview | Opening the app from its claude.ai artifact link |
+| On-device model | Free | A Chrome build that ships the built-in Prompt API |
+| Google Gemini | Free tier | Your own API key from aistudio.google.com |
+| Groq | Free tier | Your own API key from console.groq.com |
+| OpenRouter | Free models | Your own API key from openrouter.ai |
+
+Keys are stored in this browser's `localStorage` and sent only to the provider you chose. Event details,
+notes and names of the people involved are included in the prompt. Default model names are in
+`src/ai.js` and editable in the UI, since providers rename their free models. There is no server in this
+prototype: a production build should make these calls from a backend so no key reaches the client.
+
+`src/ai.js` is the provider layer (`askJSON`). `src/planner.js` holds the rule-based `draftPlan` and
+`suggestions`, and the model-backed `draftPlanAI` and `askCopilot`.
 
 ## What is real and what is simulated
 
 Works for real, in this browser only: all state changes (saved to `localStorage`), photo upload
 (downscaled and stored locally), the device camera where the browser grants access, copy-link.
 
-Simulated and labelled as such in the UI: the AI planner (rule-based), sign-in, emails and reminders, file uploads (name and
+Simulated and labelled as such in the UI: the planner when no AI model is connected (it uses built-in rules), sign-in, emails and reminders, file uploads (name and
 size only), video storage, the camera when no device camera is available, cross-device sync.
 There is no backend.
 
@@ -72,7 +90,8 @@ src/
   seed.js         sample data (plain records; app logic never refers to a sample event by id)
   store.js        normalised state, selectors and every mutation ("actions")
   permissions.js  role and capability checks, scoped per event
-  planner.js      rule-based planner engine (stand-in for an AI co-pilot)
+  ai.js           model providers for the planner (Claude, on-device, Gemini, Groq, OpenRouter)
+  planner.js      planner engine: built-in rules plus the model-backed plan and co-pilot
   ui.js           shared components, icons, hash router
   app.js          application shell and navigation
   views/          home (dashboard, My Events, My Tasks, notifications, profile, invitation),

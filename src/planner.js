@@ -129,3 +129,91 @@ export function statusSummary(ev) {
   const st = rsvpStats(ev.id); const tasks = tasksOf(ev.id); const open = tasks.filter((t) => t.status !== 'done'); const b = budgetOf(ev.id); const days = daysUntil(ev.date);
   return `Planner status for ${ev.name}, ${days >= 0 ? days + ' days to go' : 'event passed'}: ${st.going} going, ${st.maybe} maybe, ${st.pending} waiting for a reply. ${tasks.length - open.length} of ${tasks.length} tasks done, ${open.filter((t) => t.status === 'blocked').length} blocked, ${open.filter((t) => t.due && daysUntil(t.due) < 0).length} overdue.${b.total ? ` Budget: ${ev.currency}${Math.round(b.actual)} paid of ${ev.currency}${Math.round(b.total)}.` : ''}`;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Real-model path. The model only ever proposes: its JSON is validated and normalised here into the
+   same plan shape the rules produce, then goes through the same review screen and `applyPlan`.
+   --------------------------------------------------------------------------------------------- */
+import { askJSON } from './ai.js';
+import { committee } from './store.js';
+const TONE_SET = ['lav', 'butter', 'coral', 'mint', 'sky']; const PRI = ['low', 'medium', 'high'];
+const str = (v, max = 140) => (typeof v === 'string' ? v.trim().slice(0, max) : ''); const arr = (v) => (Array.isArray(v) ? v : []);
+const time = (v) => (/^\d{1,2}:\d{2}$/.test(String(v)) ? hhmm(mins(String(v))) : null);
+const eventFacts = (ev) => `Event: ${ev.name}. Type: ${ev.category}, ${COMPLEXITY[ev.complexity].label.toLowerCase()} size, about ${ev.expected} people. Date: ${ev.date} (today is ${today()}). Time: ${ev.start} to ${ev.end || 'late'}. Location: ${ev.location || 'not decided'}. Description: ${ev.description || 'none'}.`;
+
+export async function draftPlanAI(ev, brief) {
+  const base = draftPlan(ev, brief); const owner = me().name; const helpers = [...new Set(brief.helpers.map((n) => n.trim()).filter(Boolean))].filter((n) => n !== owner); const people = [owner, ...helpers];
+  const existing = committeesOf(ev.id); const haveTask = new Set(tasksOf(ev.id).map((t) => t.title.toLowerCase()));
+  const prompt = `You are planning a real event for its host. Draft a practical, specific plan.
+${eventFacts(ev)}
+Host's notes: ${brief.notes || 'none'}.
+Areas the host wants organised: ${brief.areas.map((k) => AREAS[k]?.name).filter(Boolean).join(', ')}.
+Total budget: ${brief.budget ? ev.currency + brief.budget : 'not set'}.
+People who can be given work (use these exact names only): ${people.join(', ')}. "${owner}" is the host.
+Teams that already exist: ${existing.map((c) => c.name).join(', ') || 'none'}. Reuse their names rather than inventing near-duplicates.
+Tasks that already exist (do not repeat): ${[...haveTask].slice(0, 40).join('; ') || 'none'}.
+
+JSON shape:
+{"insights":["short things you noticed in the notes that shaped the plan"],
+ "teams":[{"name":"","icon":"one emoji","tone":"lav|butter|coral|mint|sky","lead":"a name from the list","members":["names"],"budget":0,
+   "tasks":[{"title":"","daysBefore":0,"priority":"low|medium|high","assignee":"a name","dependsOn":"title of another task in this plan, or empty"}]}],
+ "hostTasks":[{"title":"","daysBefore":0,"priority":"low|medium|high"}],
+ "schedule":[{"title":"","start":"HH:MM","end":"HH:MM","owner":"a name"}],
+ "welcome":"a warm 2 sentence announcement to guests"}
+Rules: one team per area the host listed, 2 to 5 tasks each, written for this specific event and its notes. Spread leads and tasks fairly across the people. daysBefore is days before the event date. Team budgets must add up to no more than 90% of the total. Schedule times are on the event day, 24 hour clock, 4 to 8 items.`;
+  const raw = await askJSON(prompt); const budget = +brief.budget || 0; const pick = (n, pool, i) => { const hit = pool.find((p) => p.toLowerCase() === str(n).toLowerCase()); return hit || pool[i % pool.length]; };
+  const teams = arr(raw.teams).slice(0, 9).map((t, i) => {
+    const name = str(t.name, 40) || `Team ${i + 1}`; const found = existing.find((c) => c.name.toLowerCase() === name.toLowerCase());
+    const lead = helpers.length ? pick(t.lead, helpers, i) : null; const members = [...new Set(arr(t.members).map((m) => helpers.find((h) => h.toLowerCase() === str(m).toLowerCase())).filter((m) => m && m !== lead))];
+    const crew = [lead, ...members].filter(Boolean); const pool = crew.length ? crew : [owner];
+    const tasks = arr(t.tasks).slice(0, 6).map((k, n) => ({ title: str(k.title), due: dueFor(ev, Math.max(0, Math.min(120, +k.daysBefore || 0))), priority: PRI.includes(k.priority) ? k.priority : 'medium', assignee: pick(k.assignee, pool, n), dep: str(k.dependsOn) || null }))
+      .filter((k) => k.title && !haveTask.has(k.title.toLowerCase()));
+    return { key: 'ai' + i, name, icon: str(t.icon, 4) || '⭐', tone: TONE_SET.includes(t.tone) ? t.tone : TONE_SET[i % 5], existingId: found?.id || null, lead: found && leadOf(found.id) ? user(leadOf(found.id)).name : lead, members, budget: Math.max(0, Math.round(+t.budget || 0)), tasks, on: true };
+  });
+  if (!teams.length) throw new Error('The model returned no teams.');
+  const all = new Set(teams.flatMap((t) => t.tasks.map((k) => k.title))); teams.forEach((t) => t.tasks.forEach((k) => { if (k.dep && (!all.has(k.dep) || k.dep === k.title)) k.dep = null; }));
+  const spent = teams.reduce((n, t) => n + t.budget, 0); if (budget && spent > budget) teams.forEach((t) => { t.budget = Math.floor((t.budget * budget * 0.9) / spent); }); if (!budget) teams.forEach((t) => { t.budget = 0; });
+  const core = arr(raw.hostTasks).slice(0, 8).map((k) => ({ title: str(k.title), due: dueFor(ev, Math.max(0, Math.min(120, +k.daysBefore || 0))), priority: PRI.includes(k.priority) ? k.priority : 'medium', assignee: owner })).filter((k) => k.title && !haveTask.has(k.title.toLowerCase()));
+  const schedule = scheduleOf(ev.id).length ? [] : arr(raw.schedule).slice(0, 10).map((x, n) => ({ title: str(x.title, 80), start: time(x.start), end: time(x.end) || '', owner: pick(x.owner, people, n) })).filter((x) => x.title && x.start).sort((a, b) => a.start.localeCompare(b.start));
+  return { ...base, teams, core: core.length ? core : base.core, schedule: schedule.length ? schedule : base.schedule, welcome: str(raw.welcome, 600) || base.welcome, noticed: arr(raw.insights).map((x) => str(x, 90)).filter(Boolean).slice(0, 5),
+    reserve: budget ? budget - teams.reduce((n, t) => n + t.budget, 0) : 0, ai: true, on: { ...base.on, schedule: (schedule.length || base.schedule.length) > 0 } };
+}
+
+// Free-form request -> a reply plus proposed actions the host approves one by one.
+export async function askCopilot(ev, question) {
+  const id = ev.id; const st = rsvpStats(id); const teams = committeesOf(id); const open = tasksOf(id).filter((t) => t.status !== 'done').slice(0, 45);
+  const people = membersOf(id).filter((m) => m.role !== 'guest').map((m) => user(m.userId).name); const byName = (n) => membersOf(id).map((m) => user(m.userId)).find((u) => u.name.toLowerCase() === str(n).toLowerCase());
+  const prompt = `You are the planning co-pilot inside an event app. Answer the host's request briefly and propose actions only when they clearly help.
+${eventFacts(ev)}
+RSVPs: ${st.invited} invited, ${st.going} going, ${st.maybe} maybe, ${st.pending} no reply, ${st.declined} declined.
+Teams: ${teams.map((c) => `${c.name} (lead ${leadOf(c.id) ? user(leadOf(c.id)).name : 'none'}; ${teamMembers(c.id).map((m) => user(m.userId).name).join(', ') || 'no members'})`).join(' | ') || 'none'}.
+Organisers (exact names): ${people.join(', ')}.
+Open tasks as id | title | team | assignee | due | status:
+${open.map((t) => `${t.id} | ${t.title} | ${t.committeeId ? committee(t.committeeId)?.name : '-'} | ${t.assigneeId ? user(t.assigneeId).name : 'unassigned'} | ${t.due || '-'} | ${t.status}`).join('\n') || 'none'}
+
+Host's request: ${question}
+
+JSON shape: {"reply":"2 to 4 plain sentences","actions":[ ... ]} with at most 6 actions, each one of:
+{"type":"remind_rsvps"}
+{"type":"create_task","title":"","team":"existing team name or empty","assignee":"organiser name or empty","dueInDays":3,"priority":"low|medium|high"}
+{"type":"assign_task","taskId":"","assignee":"organiser name"}
+{"type":"set_task_status","taskId":"","status":"todo|doing|blocked|done"}
+{"type":"post_update","audience":"everyone|organisers","text":""}
+{"type":"invite_guest","name":""}
+{"type":"add_schedule_item","title":"","start":"HH:MM","end":"HH:MM"}
+Use only task ids and names given above.`;
+  const raw = await askJSON(prompt); const note = (t) => plannerLog(id, t);
+  const actions = arr(raw.actions).slice(0, 6).map((a) => {
+    const t = a.taskId && tasksOf(id).find((x) => x.id === a.taskId); const who = byName(a.assignee);
+    if (a.type === 'remind_rsvps' && st.pending) return { label: `Send RSVP reminders to ${st.pending} guests`, sim: true, run: () => { remind(id); note(`Sent RSVP reminders to ${st.pending} guests.`); } };
+    if (a.type === 'create_task' && str(a.title)) { const c = teams.find((x) => x.name.toLowerCase() === str(a.team).toLowerCase()); const due = addDays(Math.max(0, Math.min(365, +a.dueInDays || 0)));
+      return { label: `Add task “${str(a.title)}”${who ? ' for ' + who.name : ''}${c ? ' in ' + c.name : ''}`, run: () => { createTask(id, { title: str(a.title), committeeId: c?.id || null, assigneeId: who?.id || null, due, priority: PRI.includes(a.priority) ? a.priority : 'medium' }); note(`Added the task “${str(a.title)}”.`); } }; }
+    if (a.type === 'assign_task' && t && who) return { label: `Hand “${t.title}” to ${who.name}`, run: () => { updateTask(t.id, { assigneeId: who.id }); note(`Handed “${t.title}” to ${who.name}.`); } };
+    if (a.type === 'set_task_status' && t && ['todo', 'doing', 'blocked', 'done'].includes(a.status)) return { label: `Mark “${t.title}” as ${a.status === 'doing' ? 'in progress' : a.status === 'todo' ? 'not started' : a.status}`, run: () => { updateTask(t.id, { status: a.status }); } };
+    if (a.type === 'post_update' && str(a.text, 800)) return { label: `Post to ${a.audience === 'everyone' ? 'everyone' : 'organisers'}: “${str(a.text, 70)}${str(a.text, 800).length > 70 ? '…' : ''}”`, run: () => { postUpdate(id, { scope: a.audience === 'everyone' ? 'event' : 'internal', text: str(a.text, 800) }); note('Posted an update it drafted.'); } };
+    if (a.type === 'invite_guest' && str(a.name, 60)) return { label: `Invite ${str(a.name, 60)}`, sim: true, run: () => { addGuest(id, { name: str(a.name, 60), plusOneAllowed: has(ev, 'plusOnes') }); note(`Invited ${str(a.name, 60)}.`); } };
+    if (a.type === 'add_schedule_item' && str(a.title) && time(a.start)) return { label: `Add “${str(a.title)}” to the schedule at ${time(a.start)}`, run: () => { addItem('scheduleItems', id, { title: str(a.title), date: ev.date, start: time(a.start), end: time(a.end) || '', location: ev.location || '', ownerId: meId(), description: '', checklist: [], reminder: 0 }); } };
+    return null;
+  }).filter(Boolean);
+  return { reply: str(raw.reply, 900) || 'Done.', actions };
+}
