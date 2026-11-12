@@ -15,7 +15,7 @@ export function CreateEvent() {
   const pickCategory = (c) => setD({ ...d, category: c.id, cover: d.cover.image ? d.cover : { tone: c.tone, emoji: c.emoji } });
   const next = () => { if (step === 0 && !d.name.trim()) return toast('Give your event a name'); if (step === 1 && !d.date) return toast('Pick a date');
     if (step === 1 && !touched) setD((x) => ({ ...x, complexity: suggestComplexity(+x.expected) })); setStep(step + 1); };
-  const finish = () => { const id = createEvent(d, withTeams); toast(`${d.name} is ready 🎉`); go(`e-${id}-overview`); };
+  const finish = () => { const id = createEvent(d, withTeams); toast(`${d.name} is ready 🎉`); go(`e-${id}-planner`); };
   return html`<div class="col gap-l" style="max-width:760px;margin:0 auto;width:100%">
     <div class="col gap-s"><div class="row between"><span class="eyebrow">Step ${step + 1} of ${STEPS.length}</span><button class="btn ghost sm" onClick=${() => go('home')}>Cancel</button></div><h1>${step === 0 ? 'What are you planning?' : STEPS[step]}</h1>
       <div class="steps">${STEPS.map((_, i) => html`<i key=${i} class=${cx(i <= step && 'on')}></i>`)}</div></div>

@@ -8,6 +8,8 @@ export function can(eventId, cap, userId = meId()) {
   if (role === 'owner') return true;
   return !!eventById(eventId)?.permissions?.[role]?.[cap];
 }
+// The planner drafts teams, tasks and invitations, so it is offered only to people who may change all three.
+export const canPlan = (eventId) => can(eventId, 'manageTeams') && can(eventId, 'manageTasks') && can(eventId, 'manageGuests');
 export const isOwner = (eventId) => roleIn(eventId) === 'owner';
 export const isOrganiser = (eventId) => ['owner', 'manager', 'lead', 'member'].includes(roleIn(eventId));
 export const leadsTeam = (committeeId, userId = meId()) => teamMembers(committeeId).some((m) => m.userId === userId && m.role === 'lead');
@@ -50,6 +52,7 @@ export function sectionsFor(ev) {
     files: can(id, 'viewFiles') || role === 'vendor',
   };
   const list = ev.modules.filter((m) => show[m]);
+  if (canPlan(id)) list.splice(1, 0, 'planner');
   if (role === 'owner') list.push('setup');
   return list;
 }

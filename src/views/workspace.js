@@ -12,6 +12,7 @@ import { Tasks, TaskRow, TaskModal } from './tasks.js';
 import { Schedule, Budget } from './plan.js';
 import { Gallery, PermTable } from './gallery.js';
 import { Updates, Files } from './feed.js';
+import { Planner, PlannerNudge } from './planner.js';
 
 function Countdown({ ev }) {
   const [, tick] = useState(0); useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
@@ -32,6 +33,7 @@ function Overview({ ev, sections }) {
     can(id, 'manageSchedule') && ['schedule', 'clock', 'Plan the day', 'mint'], sections.includes('budget') && ['budget', 'wallet', 'Record expense', 'mint']].filter(Boolean).slice(0, 4);
   return html`
     ${invitationFor(id) && role !== 'owner' && html`<${RsvpCard} ev=${ev} />`}
+    ${sections.includes('planner') && html`<${PlannerNudge} ev=${ev} />`}
     <div class="split">
       <div class="col gap-l">
         <div class=${'card tint col c-' + ev.cover.tone}><div class="row between wrap"><div class="col" style="gap:4px"><div class="eyebrow" style="color:var(--ci)">Countdown</div><${Countdown} ev=${ev} /></div>
@@ -68,7 +70,7 @@ function Setup({ ev }) {
     <div class="card col"><h3>Workspace size</h3><p class="small muted">Change this any time. Moving up adds sections and tools. Nothing you have made is ever removed.</p>
       <div class="grid g3">${Object.entries(COMPLEXITY).map(([k, c]) => html`<button key=${k} class=${cx('pick', ev.complexity === k && 'on')} onClick=${() => { if (ev.complexity !== k) { setComplexity(ev.id, k); toast(`Workspace is now ${c.label}`); } }}><span style="font-size:1.5rem">${c.emoji}</span><b>${c.label} event</b><span class="small muted">${c.blurb}</span></button>`)}</div></div>
     <div class="grid g2">
-      <div class="card col"><h3>Sections</h3>${SECTIONS.filter((s) => !['overview', 'setup'].includes(s.id)).map((s) => html`<div class="row" key=${s.id}><${Icon} name=${s.icon} /><b class="grow">${s.label}</b><${Switch} on=${ev.modules.includes(s.id)} label=${s.label} onChange=${() => toggleIn(ev.id, 'modules', s.id)} /></div>`)}</div>
+      <div class="card col"><h3>Sections</h3>${SECTIONS.filter((s) => !['overview', 'planner', 'setup'].includes(s.id)).map((s) => html`<div class="row" key=${s.id}><${Icon} name=${s.icon} /><b class="grow">${s.label}</b><${Switch} on=${ev.modules.includes(s.id)} label=${s.label} onChange=${() => toggleIn(ev.id, 'modules', s.id)} /></div>`)}</div>
       <div class="card col"><h3>Extra tools</h3>${FEATURES.map((f) => html`<div class="row" key=${f.id}><div class="col grow" style="gap:0"><b>${f.label}</b><span class="tiny muted">${f.hint}</span></div><${Switch} on=${has(ev, f.id)} label=${f.label} onChange=${() => toggleIn(ev.id, 'features', f.id)} /></div>`)}</div>
     </div>
     <div class="card col"><h3>Roles and permissions</h3><p class="small muted">Permissions apply to this event only. Owners can always do everything. Being invited never unlocks budgets, internal discussions or contracts unless you switch it on here.</p>
@@ -81,7 +83,7 @@ function Setup({ ev }) {
       <div class="row between wrap"><${Confirm} label="Delete this event" small=${false} onConfirm=${() => { deleteEvent(ev.id); go('events'); toast('Event deleted'); }} /><button class="btn primary" onClick=${() => { updateEvent(ev.id, { ...d, expected: +d.expected || 0 }); toast('Event details saved'); }}>Save details</button></div></div>`;
 }
 
-const VIEWS = { people: People, teams: Teams, tasks: Tasks, schedule: Schedule, budget: Budget, gallery: Gallery, updates: Updates, files: Files, setup: Setup };
+const VIEWS = { planner: Planner, people: People, teams: Teams, tasks: Tasks, schedule: Schedule, budget: Budget, gallery: Gallery, updates: Updates, files: Files, setup: Setup };
 
 export function Workspace({ eventId, section }) {
   const ev = eventById(eventId); const role = ev && roleIn(eventId);

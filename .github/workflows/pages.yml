@@ -1,8 +1,7 @@
-# Publishes the static prototype to GitHub Pages on every push to main.
+# Publishes the static prototype to GitHub Pages. Manual only: Pages is not enabled for this
+# repository yet, so running on every push would just fail. Re-add a push trigger once it is.
 name: Deploy to GitHub Pages
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

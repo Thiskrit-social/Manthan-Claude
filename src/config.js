@@ -21,6 +21,7 @@ export const category = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIE
 // Workspace sections (modules). `setup` is always available to the owner.
 export const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: 'grid' },
+  { id: 'planner', label: 'Planner', icon: 'sparkle' },
   { id: 'people', label: 'People', icon: 'users' },
   { id: 'teams', label: 'Teams', icon: 'flag' },
   { id: 'tasks', label: 'Tasks', icon: 'tasks' },

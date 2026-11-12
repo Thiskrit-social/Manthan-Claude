@@ -228,6 +228,11 @@ export const commentUpdate = (id, text) => mutate((s) => { s.announcements.find(
 export const deleteUpdate = (id) => mutate((s) => { s.announcements = s.announcements.filter((a) => a.id !== id); });
 
 /* notifications */
+/* planner (co-pilot) */
+export const setPlanner = (eventId, patch) => mutate((s) => { const ev = s.events.find((e) => e.id === eventId); ev.planner = { log: [], ...(ev.planner || {}), ...patch }; });
+export const plannerLog = (eventId, text) => mutate((s) => { const ev = s.events.find((e) => e.id === eventId); ev.planner = { log: [], ...(ev.planner || {}) }; ev.planner.log.unshift({ id: uid('pl'), text, at: now() }); });
+export const nudgeTasks = (ids) => mutate((s) => { let n = 0; s.tasks.filter((t) => ids.includes(t.id) && t.assigneeId).forEach((t) => { notify(s, t.assigneeId, t.eventId, `Planner nudge: “${t.title}” needs your attention`, `e-${t.eventId}-tasks`); n += 1; }); return n; });
+
 export const markRead = (id) => mutate((s) => { const n = s.notifications.find((x) => x.id === id); if (n) n.read = true; });
 export const markAllRead = () => mutate((s) => { s.notifications.forEach((n) => { if (n.userId === s.currentUserId) n.read = true; }); });
 export { today };

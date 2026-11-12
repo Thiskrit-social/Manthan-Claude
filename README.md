@@ -39,12 +39,24 @@ Two fully populated events demonstrate the adaptive workspace:
 
 Profile → **Reset demo data** restores the starting state.
 
+## The planner (co-pilot)
+
+Every workspace has a **Planner** tab for owners and managers, and a new event opens on it. Give it a short
+brief (notes, what needs organising, budget, who is helping, who to invite) and it drafts teams with leads,
+hands tasks to people with due dates, a run of the day, a budget split, invitations and a welcome post.
+You review and switch off anything before applying. Afterwards it suggests next steps from the live event:
+chase RSVPs, hand off unassigned tasks, nudge overdue owners, brief the food team on dietary needs.
+
+It is a **simulated AI**: `src/planner.js` is a rule-based engine and no model is called. `draftPlan` and
+`suggestions` are the two functions to replace with a real model; they only produce proposals, and
+everything is applied through the normal store actions.
+
 ## What is real and what is simulated
 
 Works for real, in this browser only: all state changes (saved to `localStorage`), photo upload
 (downscaled and stored locally), the device camera where the browser grants access, copy-link.
 
-Simulated and labelled as such in the UI: sign-in, emails and reminders, file uploads (name and
+Simulated and labelled as such in the UI: the AI planner (rule-based), sign-in, emails and reminders, file uploads (name and
 size only), video storage, the camera when no device camera is available, cross-device sync.
 There is no backend.
 
@@ -60,6 +72,7 @@ src/
   seed.js         sample data (plain records; app logic never refers to a sample event by id)
   store.js        normalised state, selectors and every mutation ("actions")
   permissions.js  role and capability checks, scoped per event
+  planner.js      rule-based planner engine (stand-in for an AI co-pilot)
   ui.js           shared components, icons, hash router
   app.js          application shell and navigation
   views/          home (dashboard, My Events, My Tasks, notifications, profile, invitation),
