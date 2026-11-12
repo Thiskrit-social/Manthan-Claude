@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gather Phone</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Nunito:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Phone prototype: the same web app, shown at phone size inside a device frame. */
+  .stage { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 340px) auto; gap: 48px; justify-content: center; align-items: center; padding-block: 20px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .device { width: 414px; max-width: 100%; height: min(868px, calc(100vh - 40px)); border-radius: 46px; padding: 12px; background: var(--ink); box-shadow: var(--shadow-lg); position: relative; }
+  .device::before { content: ""; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 96px; height: 24px; border-radius: 99px; background: var(--ink); z-index: 2; pointer-events: none; }
+  .device iframe { width: 100%; height: 100%; border: 0; border-radius: 34px; background: var(--bg); display: block; }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 860px) { .stage { grid-template-columns: minmax(0, 1fr); gap: 20px; } .side { order: 2; } .device { margin: 0 auto; } }
+  /* On an actual phone the frame gets out of the way and the app fills the screen. */
+  @media (max-width: 520px) { .stage { display: block; padding: 0; min-height: 0; } .side { display: none; } .device { width: 100%; height: 100vh; height: 100dvh; padding: 0; border-radius: 0; box-shadow: none; } .device::before { display: none; } .device iframe { border-radius: 0; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="side">
+    <div class="brand" style="padding:0"><span class="brand-mark">✿</span>Gather</div>
+    <div class="col gap-s"><span class="eyebrow">Phone prototype</span><h1>The same app, in your pocket</h1>
+      <p class="muted">This is the live web app at phone size, not a mock-up. Tap around inside the frame, or jump to a screen below. Changes are shared with the desktop view.</p></div>
+    <div class="col gap-s"><span class="eyebrow">Personal</span><div class="jump" data-group>
+      <button class="chip" data-go="home">Home</button><button class="chip" data-go="events">My Events</button><button class="chip" data-go="mytasks">My Tasks</button><button class="chip" data-go="inbox">Notifications</button><button class="chip" data-go="profile">Profile</button><button class="chip" data-go="new">Create event</button></div></div>
+    <div class="col gap-s"><span class="eyebrow">🪩 Saturday House Party</span><div class="jump">
+      <button class="chip" data-go="e-evparty-overview">Overview</button><button class="chip" data-go="e-evparty-people">Guests</button><button class="chip" data-go="e-evparty-teams">Committees</button><button class="chip" data-go="e-evparty-tasks">Tasks</button><button class="chip" data-go="e-evparty-schedule">Schedule</button><button class="chip" data-go="e-evparty-gallery">Gallery</button><button class="chip" data-go="invite-evparty">Invitation</button></div></div>
+    <div class="col gap-s"><span class="eyebrow">🎓 Future Connect 2026</span><div class="jump">
+      <button class="chip" data-go="e-evfc-overview">Overview</button><button class="chip" data-go="e-evfc-people">Guests</button><button class="chip" data-go="e-evfc-teams">Teams</button><button class="chip" data-go="e-evfc-tasks">Task board</button><button class="chip" data-go="e-evfc-schedule">Schedule</button><button class="chip" data-go="e-evfc-budget">Budget</button><button class="chip" data-go="e-evfc-updates">Updates</button></div></div>
+    <p class="small muted">To try another role, open Profile in the frame and choose “Switch demo persona”. On a real phone this page drops the frame and runs full screen.</p>
+    <div class="row wrap"><a class="btn" href="index.html">Open desktop view</a></div>
+  </div>
+  <div class="device"><iframe id="app-frame" src="index.html" title="Gather at phone size"></iframe></div>
+</div>
+<script>
+  const frame = document.getElementById('app-frame');
+  document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+    try { frame.contentWindow.location.hash = b.dataset.go; frame.contentWindow.scrollTo(0, 0); } catch { frame.src = 'index.html#' + b.dataset.go; }
+    document.querySelectorAll('[data-go]').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+</script>
+</body>
+</html>
