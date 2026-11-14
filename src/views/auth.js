@@ -1,12 +1,28 @@
 // Sign-in and sign-up for cloud mode, plus the way into the local demo.
 import { html, useState } from '../lib.js';
 import { BRAND } from '../config.js';
-import { signIn, signUp, resetPassword, setMode, cloudConfig, saveCloudConfig } from '../backend.js';
+import { signIn, signUp, resetPassword, updatePassword, setMode, cloudConfig, saveCloudConfig } from '../backend.js';
 import { Icon, Field, Seg } from '../ui.js';
 import { cx } from '../utils.js';
 
 export function Splash({ text = 'Loading your events…' }) {
   return html`<div class="auth-wrap"><div class="col" style="align-items:center;gap:14px"><span class="brand-mark" style="width:48px;height:48px;font-size:1.5rem">${BRAND.mark}</span><span class="muted">${text}</span></div></div>`;
+}
+
+export const LegalLinks = () => html`<a href="terms.html" target="_blank" rel="noopener">Terms</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>`;
+
+// Shown after opening the link in a password-reset email: the person is signed in and chooses a new password.
+export function SetPassword({ onDone }) {
+  const [p, setP] = useState(''); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
+  const submit = async (e) => { e.preventDefault(); if (busy) return; if (p.length < 6) return setMsg('Passwords need at least 6 characters.');
+    setBusy(true); try { await updatePassword(p); onDone(true); } catch (err) { setMsg(err.message); setBusy(false); } };
+  return html`<div class="auth-wrap"><div class="auth-card col gap-l">
+    <div class="col" style="gap:6px;align-items:flex-start"><span class="brand" style="padding:0"><span class="brand-mark">${BRAND.mark}</span>${BRAND.name}</span><h2>Choose a new password</h2></div>
+    <form class="col" onSubmit=${submit}><${Field} label="New password"><input id="new-password" class="input" type="password" autocomplete="new-password" autofocus value=${p} onInput=${(e) => setP(e.target.value)} /><//>
+      ${msg && html`<div class="banner c-coral" role="status">${msg}</div>`}
+      <button class="btn primary" disabled=${busy}>${busy ? 'Saving…' : 'Save and continue'}</button></form>
+    <button class="btn ghost sm" onClick=${() => onDone(false)}>Skip for now</button>
+  </div></div>`;
 }
 
 export function AuthGate({ onSignedIn, error }) {
@@ -39,6 +55,7 @@ export function AuthGate({ onSignedIn, error }) {
       ${tab !== 'forgot' && html`<${Field} label="Password"><input id="auth-password" class="input" type="password" autocomplete=${tab === 'up' ? 'new-password' : 'current-password'} value=${d.password} onInput=${set('password')} /><//>`}
       ${msg && html`<div class=${'banner c-' + msg.tone} role="status">${msg.text}</div>`}
       <button class="btn primary" disabled=${busy}>${busy ? 'Please wait…' : tab === 'in' ? 'Sign in' : tab === 'up' ? 'Create account' : 'Send reset link'}</button>
+      ${tab === 'up' && html`<span class="tiny muted">By creating an account you agree to the <${LegalLinks} />.</span>`}
     </form>
     <div class="row between wrap small">${tab === 'forgot' ? html`<button class="btn ghost sm" onClick=${() => setTab('in')}><${Icon} name="left" size=${14} />Back to sign in</button>` : html`<button class="btn ghost sm" onClick=${() => { setTab('forgot'); setMsg(null); }}>Forgot password?</button>`}
       <button class="btn ghost sm" onClick=${() => { setMode('demo'); location.reload(); }}>Try the demo instead</button></div>

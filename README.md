@@ -209,3 +209,13 @@ starting values; the owner can switch on anything later in Setup without creatin
 Moving to production: views only read through selectors and write through the actions in
 `store.js`, so that file is the seam to replace with API calls. The entity shapes map directly
 onto tables or Dart models if the product is rebuilt in Flutter.
+
+## Launch basics
+
+- **Real accounts see only finished features.** The Files section, video, the stand-in camera, file-name-only attachments and the AI key settings stay in the demo (where they are labelled) and are hidden once someone signs in. With a real account the planner uses built-in rules or the browser's on-device model, never an outside AI service.
+- **Password reset** finishes in the app: the emailed link opens a "Choose a new password" screen. Expired links explain themselves on the sign-in screen.
+- **Templates and welcome.** `TEMPLATES` in `src/config.js` fill in the create form; a new account sees a three-step welcome.
+- **Feedback and error reports** go to the write-only `feedback` table (Supabase dashboard, Table editor, `feedback`). Unexpected errors are reported automatically, at most five per visit.
+- **Delete account** is on the Profile screen and calls `delete_my_account()` (migration `005_feedback_and_account_deletion.sql`).
+- **Legal pages:** `terms.html` and `privacy.html` are plain-language drafts. Add the operator's name and a contact address, and have them checked, before growing beyond a beta.
+- **Link preview:** `og.png` and the tags in `index.html`. If the site moves to its own domain, update the `og:image` address.

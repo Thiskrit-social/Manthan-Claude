@@ -2,8 +2,8 @@
 import { html, render, useState, useEffect } from './lib.js';
 import { BRAND } from './config.js';
 import { subscribe, me, eventsFor, unreadCount, tasksFor, switchUser, S, isCloud } from './store.js';
-import { cloudConfig, getMode, setMode, session, startCloud, onStatus, syncStatus } from './backend.js';
-import { AuthGate, Splash } from './views/auth.js';
+import { cloudConfig, getMode, setMode, session, startCloud, onStatus, syncStatus, authLanding, watchErrors } from './backend.js';
+import { AuthGate, Splash, SetPassword } from './views/auth.js';
 import { PERSONAS } from './seed.js';
 import { route, go, Icon, Avatar, Toasts, Modal, Sim, toast } from './ui.js';
 import { cx } from './utils.js';
@@ -54,7 +54,7 @@ function App() {
       <div class="col gap-s"><div class="eyebrow" style="padding:0 10px">Your events</div>
         <nav class="nav" aria-label="Events">${mine.map(({ event: e }) => html`<button key=${e.id} class=${cx('nav-item nav-ev', r.eventId === e.id && 'on')} onClick=${() => go(`e-${e.id}-overview`)}><span class=${'dot c-' + e.cover.tone}>${e.cover.emoji}</span><span class="clip">${e.name}</span></button>`)}</nav>
       </div>
-      ${isCloud() && html`<${SyncBadge} />`}
+      ${isCloud() && html`<${SyncBadge} /><button class="btn ghost sm" style="justify-content:flex-start" onClick=${() => { go('profile'); setTimeout(() => document.getElementById('feedback')?.scrollIntoView({ behavior: 'smooth' }), 80); }}><${Icon} name="megaphone" size=${15} />Help and feedback</button>`}
       ${isCloud() ? html`<button class="who" onClick=${() => go('profile')} title="Your account"><${Avatar} id=${u.id} /><span class="col grow" style="gap:0"><b class="clip">${u.name}</b><span class="tiny muted clip">${u.email || 'Your account'}</span></span><${Icon} name="right" /></button>`
         : html`<button class="who" onClick=${() => setWho(true)} title="Switch demo persona"><${Avatar} id=${u.id} /><span class="col grow" style="gap:0"><b class="clip">${u.name}</b><span class="tiny muted">Switch demo persona</span></span><${Icon} name="swap" /></button>`}
     </aside>
@@ -75,7 +75,7 @@ function App() {
 // Boot: with a Supabase project configured, people sign in and their data comes from the server.
 // Without one (or after choosing the demo) the app runs on local sample data as before.
 function Root() {
-  const [phase, setPhase] = useState('boot'); const [error, setError] = useState('');
+  const [phase, setPhase] = useState('boot'); const [error, setError] = useState(authLanding.error || ''); const [newPass, setNewPass] = useState(!!authLanding.recovery);
   const enter = async (opts = {}) => {
     setPhase('loading');
     try { await startCloud({ ...opts, onError: (m) => toast(m) }); setPhase('ready'); }
@@ -83,12 +83,14 @@ function Root() {
   };
   useEffect(() => {
     if (!cloudConfig()) return setPhase('demo');
+    watchErrors();
     // Someone who is signed in always gets their account, even if this tab was showing the demo.
     session().then((s) => { if (s) { setMode(null); return enter(); } setPhase(getMode() === 'demo' ? 'demo' : 'auth'); })
       .catch((e) => { if (getMode() === 'demo') return setPhase('demo'); setError(e.message); setPhase('auth'); });
   }, []);
   if (phase === 'boot' || phase === 'loading') return html`<${Splash} text=${phase === 'boot' ? 'Starting…' : 'Loading your events…'} />`;
   if (phase === 'auth') return html`<${AuthGate} onSignedIn=${enter} error=${error} />`;
+  if (phase === 'ready' && newPass) return html`<${SetPassword} onDone=${(saved) => { setNewPass(false); if (saved) toast('Password saved'); }} />`;
   return html`<${App} />`;
 }
 

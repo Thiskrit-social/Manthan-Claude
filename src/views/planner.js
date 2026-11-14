@@ -1,7 +1,7 @@
 // Planner: brief -> proposed plan -> review and apply -> ongoing co-pilot suggestions.
 import { html, useState, useEffect } from '../lib.js';
 import { COMPLEXITY } from '../config.js';
-import { S, me, membersOf, committeesOf, tasksOf, user, postUpdate, plannerLog } from '../store.js';
+import { S, me, membersOf, committeesOf, tasksOf, user, postUpdate, plannerLog, isCloud } from '../store.js';
 import { AREAS, defaultAreas, draftPlan, draftPlanAI, askCopilot, applyPlan, suggestions, statusSummary } from '../planner.js';
 import { PROVIDERS, aiSettings, saveAiSettings, activeProvider, askJSON } from '../ai.js';
 import { go, Icon, Avatar, Pill, Field, Switch, Empty, Sim, toast } from '../ui.js';
@@ -13,7 +13,7 @@ function useModel() {
   useEffect(() => { let live = true; activeProvider().then((v) => live && setP(v)); return () => { live = false; }; }, [n]);
   return [p, () => setN((x) => x + 1)];
 }
-const ModelTag = ({ model }) => (model ? html`<${Pill} tone="mint" dot>AI: ${PROVIDERS[model].label.replace(/ \(.*/, '')}<//>` : html`<${Sim}>${model === undefined ? 'Checking for a model' : 'Built-in rules, no AI model'}<//>`);
+const ModelTag = ({ model }) => (model ? html`<${Pill} tone="mint" dot>AI: ${PROVIDERS[model].label.replace(/ \(.*/, '')}<//>` : isCloud() ? null : html`<${Sim}>${model === undefined ? 'Checking for a model' : 'Built-in rules, no AI model'}<//>`);
 
 function ModelSettings({ model, onChange }) {
   const [s, setS] = useState(aiSettings()); const [test, setTest] = useState(''); const def = PROVIDERS[s.provider];
@@ -112,7 +112,7 @@ export function Planner({ ev }) {
     helpers: membersOf(ev.id).filter((m) => ['manager', 'lead', 'member'].includes(m.role) && m.userId !== me().id).map((m) => user(m.userId).name), guests: [] }));
   return html`<div class="sec-head"><div class="col" style="gap:4px"><div class="row wrap"><h2>Planner</h2><${ModelTag} model=${model} /></div>
       <p class="muted small" style="max-width:62ch">Your co-pilot for this event. It drafts the plan, hands tasks to the right people and keeps RSVPs moving. You approve everything before it happens.</p></div>
-      <div class="row wrap"><button class="btn" onClick=${() => setShowModel(!showModel)}><${Icon} name="sliders" />AI model</button>${mode === 'copilot' && html`<button class="btn" onClick=${() => setMode('brief')}><${Icon} name="sparkle" />New brief</button>`}</div></div>
+      <div class="row wrap">${!isCloud() && html`<button class="btn" onClick=${() => setShowModel(!showModel)}><${Icon} name="sliders" />AI model</button>`}${mode === 'copilot' && html`<button class="btn" onClick=${() => setMode('brief')}><${Icon} name="sparkle" />New brief</button>`}</div></div>
     ${showModel && html`<${ModelSettings} model=${model} onChange=${recheck} />`}
     ${mode === 'brief' && html`<${Brief} ev=${ev} brief=${brief} setBrief=${setBrief} busy=${busy} model=${model} onDraft=${draft} />${!fresh && html`<div><button class="btn ghost" onClick=${() => setMode('copilot')}>Back to suggestions</button></div>`}`}
     ${mode === 'review' && plan && html`<${Review} ev=${ev} plan=${plan} setPlan=${setPlan} onBack=${() => setMode('brief')} onApply=${() => { const m = applyPlan(ev, plan); setMode('copilot'); window.scrollTo(0, 0); toast(`Plan applied: ${m.tasks} tasks, ${m.handoffs} handed off`); }} />`}

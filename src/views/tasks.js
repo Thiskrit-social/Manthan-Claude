@@ -1,7 +1,7 @@
 // Task management: board, list and calendar views plus the task editor. Reused by My Tasks and team pages.
 import { html, useState } from '../lib.js';
 import { TASK_STATUS, PRIORITY, by } from '../config.js';
-import { S, eventById, committeesOf, committee, membersOf, tasksOf, taskById, openDeps, progress, createTask, updateTask, deleteTask, commentTask, has, meId, user } from '../store.js';
+import { S, eventById, committeesOf, committee, membersOf, tasksOf, taskById, openDeps, progress, createTask, updateTask, deleteTask, commentTask, has, meId, user, isCloud } from '../store.js';
 import { can, canEditTask, canUpdateTask, canCreateTask, visibleTasks, leadsTeam } from '../permissions.js';
 import { Icon, Avatar, Pill, StatusPill, Bar, Seg, Field, Modal, Confirm, Tick, Checklist, UserSelect, Empty, toast, Sim } from '../ui.js';
 import { cx, dueLabel, daysUntil, fmtDate, iso, today, ago } from '../utils.js';
@@ -61,7 +61,7 @@ export function TaskModal({ taskId, eventId, preset = {}, onClose }) {
     ${existing && html`
       <div class="col gap-s"><span class="eyebrow">Attachments</span>
         <div class="chips">${t.attachments.map((a, i) => html`<span class="chip" key=${i}><${Icon} name="file" size=${14} />${a}</span>`)}
-          ${upd && html`<label class="chip" style="cursor:pointer"><${Icon} name="upload" size=${14} />Attach a file<input type="file" hidden onChange=${(e) => { const f = e.target.files[0]; if (f) { set({ attachments: [...t.attachments, f.name] }); toast('Attached by name only', true); } }} /></label>`}</div></div>
+          ${upd && !isCloud() && html`<label class="chip" style="cursor:pointer"><${Icon} name="upload" size=${14} />Attach a file<input type="file" hidden onChange=${(e) => { const f = e.target.files[0]; if (f) { set({ attachments: [...t.attachments, f.name] }); toast('Attached by name only', true); } }} /></label>`}</div></div>
       <div class="col gap-s"><span class="eyebrow">Comments</span>
         ${t.comments.map((c) => html`<div class="row top" key=${c.id}><${Avatar} id=${c.userId} size="sm" /><div class="grow"><b class="small">${user(c.userId).name}</b> <span class="tiny muted">${ago(c.at)}</span><div>${c.text}</div></div></div>`)}
         ${upd && html`<form class="row" onSubmit=${(e) => { e.preventDefault(); if (comment.trim()) { commentTask(t.id, comment.trim()); setComment(''); } }}><input class="input" placeholder="Write a comment" value=${comment} onInput=${(e) => setComment(e.target.value)} /><button class="btn sm" aria-label="Send"><${Icon} name="send" size=${15} /></button></form>`}</div>`}

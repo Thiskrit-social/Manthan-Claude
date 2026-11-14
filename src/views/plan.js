@@ -1,6 +1,6 @@
 // Schedule (event timeline) and Budget.
 import { html, useState } from '../lib.js';
-import { scheduleOf, budgetOf, expensesOf, committeesOf, committee, membersOf, addItem, updateItem, removeItem, updateEvent, user, meId } from '../store.js';
+import { scheduleOf, budgetOf, expensesOf, committeesOf, committee, membersOf, addItem, updateItem, removeItem, updateEvent, user, meId, isCloud } from '../store.js';
 import { can, canAddExpense, leadsTeam } from '../permissions.js';
 import { Icon, Avatar, Pill, Field, Modal, Confirm, Empty, UserSelect, Checklist, toast, Sim } from '../ui.js';
 import { cx, fmtDate, fmtTime, money, pct, today } from '../utils.js';
@@ -56,8 +56,8 @@ function ExpenseModal({ ev, item, onClose }) {
       <${Field} label="Date"><input class="input" type="date" value=${d.date} onInput=${set('date')} /><//>
       <${Field} label="Paid by"><${UserSelect} value=${d.paidBy} ids=${ids} placeholder="Nobody yet" onChange=${(v) => setD({ ...d, paidBy: v })} /><//></div>
     <${Field} label="Notes"><textarea class="input" style="min-height:56px" value=${d.description} onInput=${set('description')}></textarea><//>
-    <div class="row wrap"><label class="btn" style="cursor:pointer"><${Icon} name="upload" />${d.receipt ? 'Replace receipt' : 'Attach receipt'}<input type="file" hidden accept="image/*,.pdf" onChange=${(e) => e.target.files[0] && setD({ ...d, receipt: e.target.files[0].name })} /></label>
-      ${d.receipt && html`<span class="chip"><${Icon} name="file" size=${14} />${d.receipt}</span>`}<${Sim}>File name only<//></div>
+    ${!isCloud() && html`<div class="row wrap"><label class="btn" style="cursor:pointer"><${Icon} name="upload" />${d.receipt ? 'Replace receipt' : 'Attach receipt'}<input type="file" hidden accept="image/*,.pdf" onChange=${(e) => e.target.files[0] && setD({ ...d, receipt: e.target.files[0].name })} /></label>
+      ${d.receipt && html`<span class="chip"><${Icon} name="file" size=${14} />${d.receipt}</span>`}<${Sim}>File name only<//></div>`}
   <//>`;
 }
 

@@ -6,6 +6,7 @@
 //   openrouter  OpenRouter ":free" models            (your own key)
 // Keys are kept in this browser's localStorage and sent only to the chosen provider. There is no server here,
 // so a production build must move these calls behind a backend rather than ship a key to the client.
+import { isCloud } from './store.js';
 const KEY = 'gather.ai.v1';
 export const PROVIDERS = {
   auto: { label: 'Automatic', hint: 'Use Claude or the on-device model when this browser offers one.' },
@@ -31,6 +32,8 @@ async function chromeReady() { try { return typeof LanguageModel !== 'undefined'
 export async function activeProvider() {
   const s = aiSettings(); const p = s.provider;
   if (p === 'rules') return null;
+  // Real accounts never send event details to an outside AI company: on-device model or built-in rules only.
+  if (isCloud()) return (await chromeReady()) ? 'chrome' : null;
   if (p === 'claude' || p === 'auto') { if (await claudeSample()) return 'claude'; if (p === 'claude') return null; }
   if (p === 'chrome' || p === 'auto') return (await chromeReady()) ? 'chrome' : null;
   return PROVIDERS[p]?.key && s.keys[p] ? p : null;

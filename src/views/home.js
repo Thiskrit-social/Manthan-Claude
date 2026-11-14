@@ -3,12 +3,12 @@ import { html, useState, useEffect } from '../lib.js';
 import { BRAND, ROLES, COMPLEXITY, PRIVACY, by } from '../config.js';
 import { me, meId, user, eventsFor, tasksFor, notificationsFor, invitationFor, eventById, roleIn, rsvpStats, S, activityOf, markRead, markAllRead, resetDemo, respondToInvite, isCloud, myTeams, tasksOf, progress, membersOf, scheduleOf } from '../store.js';
 import { visibleTasks } from '../permissions.js';
-import { go, Icon, Avatar, Pill, RolePill, Bar, Cover, When, Empty, Sim, Confirm, toast, Seg } from '../ui.js';
+import { go, Icon, Avatar, Pill, RolePill, Bar, Cover, When, Empty, Sim, Confirm, toast, Seg, Field } from '../ui.js';
 import { cx, greeting, fmtDate, fmtLong, fmtTime, daysUntil, dueLabel, ago, today, addDays } from '../utils.js';
 import { TaskRow, TaskModal } from './tasks.js';
 import { RsvpCard } from './people.js';
-import { importSamples, signOut, setMode, cloudConfig, invitePreview } from '../backend.js';
-import { ConnectBackend } from './auth.js';
+import { importSamples, signOut, setMode, cloudConfig, invitePreview, sendFeedback, deleteAccount } from '../backend.js';
+import { ConnectBackend, LegalLinks } from './auth.js';
 
 // Offered to a signed-in person with no events yet, and on their profile.
 function SamplesButton({ label = 'Add the two sample events' }) {
@@ -31,6 +31,33 @@ export function EventCard({ event: e, role }) {
   </button>`;
 }
 
+// First visit with a real account: the three steps that get an event out of the door.
+function Welcome() {
+  const steps = [['🎈', 'Create your event', 'Name, date and place. About a minute.'], ['💌', 'Add guests and send invitations', 'By WhatsApp or email. Everyone gets a personal link to reply.'], ['✅', 'Share out the jobs', 'Hand tasks to friends and watch replies come in.']];
+  return html`<div class="card tint c-lav col gap-l"><div class="col" style="gap:4px"><h2>Welcome to ${BRAND.name}</h2><span class="small" style="color:var(--ci)">Plan it, invite everyone and keep track in one place.</span></div>
+    <div class="grid g3">${steps.map(([e, t, s], i) => html`<div class="card col" key=${t} style="gap:4px"><span style="font-size:1.6rem">${e}</span><b>${i + 1}. ${t}</b><span class="small muted">${s}</span></div>`)}</div>
+    <div class="row wrap"><button id="welcome-create" class="btn primary" onClick=${() => go('new')}><${Icon} name="plus" />Create your first event</button><${SamplesButton} label="Or explore two sample events" /></div></div>`;
+}
+
+function FeedbackCard() {
+  const [text, setText] = useState(''); const [busy, setBusy] = useState(false);
+  const send = async () => { if (!text.trim() || busy) return; setBusy(true); try { await sendFeedback(text.trim()); setText(''); toast('Thank you. Your message was sent.'); } catch (e) { toast('Couldn’t send that: ' + e.message); } setBusy(false); };
+  return html`<div class="card col" id="feedback"><h3>Help and feedback</h3><p class="small muted">Something broken, confusing or missing? Tell us. We read every message. Add your email if you’d like a reply.</p>
+    <textarea id="feedback-text" class="input" style="min-height:84px" maxlength="4000" placeholder="What happened, or what would make this better?" value=${text} onInput=${(e) => setText(e.target.value)}></textarea>
+    <div class="row between wrap"><span class="small muted"><${LegalLinks} /></span><button class="btn primary" disabled=${!text.trim() || busy} onClick=${send}><${Icon} name="send" />${busy ? 'Sending…' : 'Send'}</button></div></div>`;
+}
+
+function DeleteAccountCard() {
+  const [open, setOpen] = useState(false); const [typed, setTyped] = useState(''); const [busy, setBusy] = useState(false);
+  const owned = eventsFor().filter((x) => x.role === 'owner').length;
+  const run = async () => { setBusy(true); try { await deleteAccount(); location.hash = 'home'; location.reload(); } catch (e) { toast('Couldn’t delete the account: ' + e.message); setBusy(false); } };
+  return html`<div class="card col"><h3>Delete account</h3>
+    ${!open ? html`<div class="row between wrap"><span class="small muted grow">Removes your account and your data for good.</span><button id="delete-account" class="btn" onClick=${() => setOpen(true)}>Delete my account…</button></div>`
+      : html`<p class="small">This permanently deletes your profile, ${owned ? html`<b>the ${owned} ${owned === 1 ? 'event' : 'events'} you host (for everyone in them)</b>, ` : ''}your photos and your replies to other people’s events. It cannot be undone.</p>
+        <${Field} label="Type DELETE to confirm"><input id="delete-confirm" class="input" autocomplete="off" value=${typed} onInput=${(e) => setTyped(e.target.value)} /><//>
+        <div class="row wrap"><button class="btn" onClick=${() => { setOpen(false); setTyped(''); }}>Cancel</button><button id="delete-go" class="btn danger" disabled=${typed.trim() !== 'DELETE' || busy} onClick=${run}>${busy ? 'Deleting…' : 'Delete my account for good'}</button></div>`}</div>`;
+}
+
 export function Home() {
   const [task, setTask] = useState(null); const u = me(); const mine = eventsFor().filter(({ event }) => daysUntil(event.date) >= 0);
   const tasks = tasksFor().filter((t) => t.status !== 'done').sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
@@ -43,6 +70,7 @@ export function Home() {
     ...mine.flatMap(({ event }) => scheduleOf(event.id).filter((s) => s.ownerId === u.id && s.date <= horizon && s.date >= today()).map((s) => ({ k: s.date + s.start, date: s.date, icon: '🕰️', title: s.title, sub: `${fmtTime(s.start)} · you’re responsible · ${event.name}`, to: `e-${event.id}-schedule`, tone: 'sky' }))),
   ].sort((a, b) => a.k.localeCompare(b.k));
   const feed = mine.flatMap(({ event, role }) => (role === 'guest' || role === 'vendor' ? [] : activityOf(event.id).slice(0, 6).map((a) => ({ ...a, event })))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 7);
+  if (isCloud() && !eventsFor().length) return html`<div class="sec-head"><div class="col" style="gap:4px"><span class="eyebrow">${fmtLong(today())}</span><h1>${greeting()}, ${u.name.split(' ')[0]} 👋</h1></div></div><${Welcome} />`;
   return html`
     <div class="sec-head"><div class="col" style="gap:4px"><span class="eyebrow">${fmtLong(today())}</span><h1>${greeting()}, ${u.name.replace(/^Dr\.\s*/, '').split(' ')[0]} 👋</h1>
       <p class="muted">${mine.length ? `You have ${mine.length} ${mine.length === 1 ? 'event' : 'events'} coming up and ${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'}.` : 'Nothing planned yet. Start something!'}</p></div>
@@ -101,7 +129,7 @@ export function MyTasks() {
 
 export function Inbox() {
   const list = notificationsFor(); const unread = list.filter((n) => !n.read).length;
-  return html`<div class="sec-head"><div class="col" style="gap:4px"><h1>Notifications</h1><p class="muted">${unread ? `${unread} unread` : 'You’re all caught up.'} <${Sim}>In-app only<//></p></div>${unread > 0 && html`<button class="btn" onClick=${markAllRead}><${Icon} name="check" />Mark all read</button>`}</div>
+  return html`<div class="sec-head"><div class="col" style="gap:4px"><h1>Notifications</h1><p class="muted">${unread ? `${unread} unread` : 'You’re all caught up.'} ${!isCloud() && html`<${Sim}>In-app only<//>`}</p></div>${unread > 0 && html`<button class="btn" onClick=${markAllRead}><${Icon} name="check" />Mark all read</button>`}</div>
     ${!list.length ? html`<div class="card"><${Empty} emoji="🔔" title="Nothing yet">Invitations, mentions and task changes appear here.<//></div>`
       : html`<div class="col gap-s">${list.map((n) => { const e = eventById(n.eventId); return html`<button key=${n.id} class=${cx('card click row', !n.read && 'unread')} onClick=${() => { markRead(n.id); if (n.link) go(n.link); }}>
         <span class=${'avatar lg c-' + (e?.cover.tone || 'grey')} style="border-radius:14px">${e?.cover.emoji || '🔔'}</span><span class="col grow" style="gap:1px"><span class=${cx(!n.read && 'b')}>${n.text}</span><span class="tiny muted">${e?.name || ''} · ${ago(n.at)}</span></span>${!n.read && html`<${Pill} tone="coral">New<//>`}</button>`; })}</div>`}`;
@@ -117,8 +145,8 @@ export function Profile({ onSwitch }) {
       <div class="list">${mine.map(({ event: e, role }) => html`<button class="row wrap" style="text-align:left" key=${e.id} onClick=${() => go(`e-${e.id}-overview`)}><span class=${'avatar c-' + e.cover.tone} style="border-radius:10px">${e.cover.emoji}</span>
         <span class="col grow" style="gap:0;min-width:160px"><b>${e.name}</b><span class="tiny muted">${fmtDate(e.date)} · ${myTeams(e.id).map((c) => c.icon + ' ' + c.name).join(', ') || ROLES[role].blurb}</span></span><${RolePill} role=${role} /></button>`)}</div>
       ${!mine.length && html`<span class="small muted">You are not part of any event yet.</span>`}</div>
-    ${isCloud() ? html`<div class="card col"><h3>Your account</h3><p class="small muted">Signed in. Your events, guests, tasks and photos are saved to your ${BRAND.name} account and shared with the people in each event, according to their role. Invitation emails and reminders are not sent yet: people see them in the app. <${Sim}>No email<//></p>
-        <div class="row wrap"><${SamplesButton} /></div></div>`
+    ${isCloud() ? html`<div class="card col"><h3>Your account</h3><p class="small muted">Signed in. Your events, guests, tasks and photos are saved to your ${BRAND.name} account and shared with the people in each event, according to their role. You send invitations yourself from each event’s People tab, by WhatsApp or email.</p>
+        <div class="row wrap"><${SamplesButton} /></div></div><${FeedbackCard} /><${DeleteAccountCard} />`
       : html`<div class="card col"><h3>About this demo</h3><p class="small muted">You are using local sample data. Your changes are saved in this browser only. Emails, invitations, file uploads and reminders are imitated and marked <${Sim} />. Photos you add stay on this device.</p>
         <div class="row wrap"><${Confirm} label="Reset demo data" small=${false} onConfirm=${() => { resetDemo(); go('home'); toast('Demo data restored'); }} />
           ${cloudConfig() && html`<button class="btn primary" onClick=${() => { setMode(null); location.hash = 'home'; location.reload(); }}>Sign in to save for real</button>`}</div></div>

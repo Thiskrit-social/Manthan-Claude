@@ -25,6 +25,19 @@ const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch { ret
 export const getMode = () => ss.get(MODE_KEY);
 export const setMode = (m) => { ss.set(MODE_KEY, m === 'demo' ? 'demo' : null); ls.set(MODE_KEY, null); };
 
+// How the page was opened, read before the Supabase library tidies the address: from a password-reset
+// email (`recovery`), or from an email link that has expired or was already used (`error`).
+export const authLanding = (() => {
+  const h = location.hash || '';
+  if (!/(^#|&)(access_token|error|error_code)=/.test(h)) return {};
+  const q = new URLSearchParams(h.slice(1));
+  if (q.get('error') || q.get('error_code')) {
+    try { history.replaceState(null, '', location.pathname + location.search + '#home'); } catch { /* ignore */ }
+    return { error: /expired|invalid/i.test(q.get('error_description') || q.get('error_code') || '') ? 'That email link has expired or was already used. Ask for a new one below.' : (q.get('error_description') || 'That link did not work.') };
+  }
+  return { recovery: q.get('type') === 'recovery' };
+})();
+
 /* ---------------- client ---------------- */
 let client = null; let libPromise = null;
 function loadLib() {
@@ -56,6 +69,32 @@ export async function signUp(name, email, password) {
   return check(await c.auth.signUp({ email, password, options: { data: { name }, emailRedirectTo: here } }));
 }
 export async function resetPassword(email) { const c = await sb(); return check(await c.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); }
+export async function updatePassword(password) { const c = await sb(); return check(await c.auth.updateUser({ password })); }
+
+// Feedback and error reports go to a write-only table that only the project owner can read.
+export async function sendFeedback(message, kind = 'feedback') {
+  const c = await sb();
+  check(await c.from('feedback').insert({ kind, message: String(message).slice(0, 4000), page: location.hash.replace(/-[A-Za-z0-9]{20,}$/, '').slice(0, 300), device: navigator.userAgent.slice(0, 300) }));
+}
+// Unexpected errors are reported automatically for signed-in people: a few per visit, each only once.
+const seenErrors = new Set();
+export function watchErrors() {
+  const report = (text) => { const m = String(text || '').slice(0, 1500); if (!m || seenErrors.has(m) || seenErrors.size >= 5 || !meRow) return; seenErrors.add(m); sendFeedback(m, 'error').catch(() => {}); };
+  window.addEventListener('error', (e) => report(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+  window.addEventListener('unhandledrejection', (e) => report('Unhandled: ' + (e.reason?.stack || e.reason?.message || e.reason)));
+}
+
+// Deletes the signed-in account. Stored photos go first (the database cannot remove files), then the
+// database removes the profile, the events this person owns and their place in other events.
+export async function deleteAccount() {
+  const c = await sb(); await flushNow(); stopPolling();
+  const s = S(); const me = s.currentUserId; const owned = new Set(s.memberships.filter((m) => m.userId === me && m.role === 'owner').map((m) => m.eventId));
+  const paths = s.media.filter((m) => m.path && (m.userId === me || owned.has(m.eventId))).map((m) => m.path);
+  for (let i = 0; i < paths.length; i += 100) await c.storage.from('media').remove(paths.slice(i, i + 100)).catch(() => {});
+  check(await c.rpc('delete_my_account'));
+  await c.auth.signOut({ scope: 'local' }).catch(() => {});
+}
+
 export async function signOut() { stopPolling(); const c = await sb(); await c.auth.signOut(); }
 
 /* ---------------- table mapping ---------------- */

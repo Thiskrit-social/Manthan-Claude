@@ -164,4 +164,30 @@ ok(run('alice', "select sent ? 'email' from invitations where id='iM1'")[0][0] i
 r2 = run('alice', "select prepare_invite_emails('evP', array['iM1'], 'reminder')")[0][0]; ok(run('alice', "select reminders from invitations where id='iM1'")[0][0] == 1, 'reminders are counted')
 ok(err(run('lin', "select prepare_invite_emails('evP', array['iM1'], 'invite')")), 'guests cannot send invitation emails')
 ok(err(run('alice', "select prepare_invite_emails('evP', array(select 'x' || g from generate_series(1, 101) g), 'invite')")), 'more than 100 emails a day for one event is refused')
+
+# --- feedback: write-only, capped ---
+ok(run('zed', "insert into feedback (kind, message, page) values ('feedback', 'Love it', 'home')", fetch=False) == 1, 'a signed-in person can send feedback')
+ok(run('zed', "select count(*) from feedback") in ([(0,)],) or err(run('zed', "select count(*) from feedback")), 'nobody can read feedback through the app')
+ok(err(run('zed', "insert into feedback (auth_user_id, message) values (%s, 'spoof')", (U['alice'],))), 'feedback cannot be filed under someone else')
+ok(err(run('zed', "insert into feedback (message) values (%s)", ('x' * 4001,))), 'over-long feedback is refused')
+for i in range(39): run('zed', "insert into feedback (kind, message) values ('error', 'e')", fetch=False)
+ok(err(run('zed', "insert into feedback (message) values ('one too many')")), 'more than 40 reports a day from one person is refused')
+
+# --- delete my account ---
+admin("select 1")
+bob_id = ids['bob']; alice_id = ids['alice']
+admin("insert into memberships (id,event_id,user_id,role) values ('mBobP','evP',%s,'member')", (bob_id,))
+admin("insert into tasks (id,event_id,title,assignee_id) values ('tDel','evP','Bob job',%s)", (bob_id,))
+run('bob', "insert into events (id,name,date,created_by,permissions) values ('evBob','Bobs do','2026-12-02',%s,'{}')", (bob_id,))
+run('bob', "insert into memberships (id,event_id,user_id,role) values ('mBobOwn','evBob',%s,'owner')", (bob_id,))
+run('bob', "insert into people (id,name,created_by) values ('pBobGuest','Ghost',%s)", (bob_id,))
+run('bob', "insert into invitations (id,event_id,user_id,name) values ('iBobG','evBob','pBobGuest','Ghost')")
+r = run('bob', "select delete_my_account()"); ok(not err(r), 'a person can delete their own account')
+def count(sql, a=None):
+    with conn.cursor() as c: c.execute(sql, a); n = c.fetchone()[0]; conn.commit(); return n
+ok(count("select count(*) from auth.users where id = %s", (U['bob'],)) == 0 and count("select count(*) from people where id = %s", (bob_id,)) == 0, 'their sign-in and profile are gone')
+ok(count("select count(*) from events where id = 'evBob'") == 0 and count("select count(*) from invitations where id = 'iBobG'") == 0 and count("select count(*) from people where id = 'pBobGuest'") == 0, 'the events they owned go with them, with their guests')
+ok(count("select count(*) from memberships where user_id = %s", (bob_id,)) == 0 and count("select count(*) from events where id = 'evP'") == 1, 'they leave other events, which stay')
+ok(count("select count(*) from tasks where id = 'tDel' and assignee_id is null") == 1, 'tasks they held in other events stay, unassigned')
+ok(count("select count(*) from people where id = %s", (alice_id,)) == 1, 'nobody else is affected')
 print('\n%d passed, %d failed' % (sum(results), len(results) - sum(results)))

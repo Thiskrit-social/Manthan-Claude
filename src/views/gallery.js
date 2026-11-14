@@ -1,13 +1,13 @@
 // Event gallery and camera. Two galleries per event: organiser (behind the scenes) and memories (everyone's photos).
 import { html, useState, useEffect, useRef } from '../lib.js';
 import { ROLES, CAPS } from '../config.js';
-import { mediaOf, addItem, updateItem, removeItem, setPermission, user, meId } from '../store.js';
+import { mediaOf, addItem, updateItem, removeItem, setPermission, user, meId, isCloud } from '../store.js';
 import { can, isOwner } from '../permissions.js';
 import { Icon, Avatar, Seg, Field, Modal, Confirm, Empty, Switch, Sim, toast, copyText } from '../ui.js';
 import { cx, ago, readImage } from '../utils.js';
 
 const GALLERIES = { organiser: { label: 'Organiser gallery', blurb: 'Behind the scenes and preparation.', view: 'viewOrganiserGallery', add: 'addOrganiserGallery' },
-  memories: { label: 'Event memories', blurb: 'Photos and videos shared by everyone who came.', view: 'viewMemories', add: 'addMemories' } };
+  memories: { label: 'Event memories', blurb: 'Photos shared by everyone who came.', view: 'viewMemories', add: 'addMemories' } };
 const SCENES = [['🥳', 'coral'], ['🎉', 'lav'], ['🍰', 'butter'], ['🕺', 'sky'], ['🌿', 'mint'], ['🥂', 'butter'], ['🎶', 'lav'], ['📸', 'sky']];
 
 export const Shot = ({ m }) => (m.src ? html`<img src=${m.src} alt=${m.caption || 'Event photo'} />` : html`<span class="emo">${m.emoji || '📷'}</span>`);
@@ -32,13 +32,13 @@ function CameraModal({ onShot, onClose }) {
   return html`<${Modal} title="Take a photo" onClose=${onClose}>
     <div class=${'viewfinder c-' + SCENES[scene][1]} style=${mode === 'sim' ? 'background:var(--cs)' : ''}>
       <video ref=${video} playsinline muted hidden=${mode !== 'live'}></video>
-      ${mode === 'sim' && html`<span class="scene">${SCENES[scene][0]}</span>`}${mode === 'starting' && html`<span>Starting camera…</span>`}
-      <span class="hud">${mode === 'sim' ? html`<${Sim}>Simulated camera<//>` : mode === 'live' && html`<span class="pill c-coral"><i class="pdot"></i>Live</span>`}</span>
+      ${mode === 'sim' && html`<span class="scene">${isCloud() ? '📷' : SCENES[scene][0]}</span>`}${mode === 'starting' && html`<span>Starting camera…</span>`}
+      <span class="hud">${mode === 'sim' ? !isCloud() && html`<${Sim}>Simulated camera<//>` : mode === 'live' && html`<span class="pill c-coral"><i class="pdot"></i>Live</span>`}</span>
       ${flash && html`<div style="position:absolute;inset:0;background:#fff;animation:fade .3s reverse forwards"></div>`}
     </div>
-    ${mode === 'sim' && html`<p class="small muted">This browser didn’t give the prototype a camera, so the viewfinder shows a stand-in scene. On a phone with camera access you get the live preview.</p>`}
-    <div class="row" style="justify-content:center;gap:24px">${mode === 'sim' && html`<button class="btn" onClick=${() => setScene((scene + 1) % SCENES.length)}><${Icon} name="swap" />Change scene</button>`}
-      <button class="shutter" aria-label="Take photo" disabled=${mode === 'starting'} onClick=${shoot}></button></div>
+    ${mode === 'sim' && html`<p class="small muted">${isCloud() ? 'The camera isn’t available here. Allow camera access in your browser, or close this and use Upload to add a photo from your device.' : 'This browser didn’t give the prototype a camera, so the viewfinder shows a stand-in scene. On a phone with camera access you get the live preview.'}</p>`}
+    <div class="row" style="justify-content:center;gap:24px">${mode === 'sim' && !isCloud() && html`<button class="btn" onClick=${() => setScene((scene + 1) % SCENES.length)}><${Icon} name="swap" />Change scene</button>`}
+      ${mode === 'sim' && isCloud() ? html`<button class="btn primary" onClick=${onClose}>Close</button>` : html`<button class="shutter" aria-label="Take photo" disabled=${mode === 'starting'} onClick=${shoot}></button>`}</div>
   <//>`;
 }
 
@@ -76,7 +76,7 @@ export function Gallery({ ev }) {
   const cur = tabs.includes(tab) ? tab : tabs[0]; if (!cur) return html`<div class="card"><${Empty} emoji="🔒" title="The galleries are private">The host hasn’t shared them with you.<//></div>`;
   const g = GALLERIES[cur]; const list = mediaOf(ev.id, cur); const canAdd = can(ev.id, g.add); const addable = tabs.filter((t) => can(ev.id, GALLERIES[t].add));
   const pick = async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-    if (f.type.startsWith('video')) return setShot({ type: 'video', emoji: '🎬', tone: 'sky', name: f.name });
+    if (f.type.startsWith('video')) return isCloud() ? toast('Videos aren’t supported yet. Choose a photo.') : setShot({ type: 'video', emoji: '🎬', tone: 'sky', name: f.name });
     try { setShot({ src: await readImage(f) }); } catch { toast('That file could not be read as an image'); } };
   const sample = () => { const [emoji, tone] = SCENES[Math.floor(Math.random() * SCENES.length)]; setShot({ emoji, tone, simulated: true }); };
   return html`<div class="sec-head"><h2>Gallery</h2><div class="row wrap">${tabs.length > 1 && html`<${Seg} value=${cur} onChange=${setTab} options=${tabs.map((t) => ({ id: t, label: GALLERIES[t].label, count: mediaOf(ev.id, t).length }))} />`}
@@ -84,8 +84,8 @@ export function Gallery({ ev }) {
     ${access && html`<div class="card col"><h3>Who can see and add to each gallery</h3><${PermTable} ev=${ev} caps=${['viewOrganiserGallery', 'addOrganiserGallery', 'viewMemories', 'addMemories']} /></div>`}
     <div class=${cx('card tint col', cur === 'memories' ? 'c-coral' : 'c-lav')}><div class="row between wrap"><div class="col" style="gap:2px"><h3>${g.label}</h3><span class="small" style="color:var(--ci)">${g.blurb}</span></div>
       ${canAdd ? html`<div class="row wrap"><button class="btn primary" onClick=${() => setCam(true)}><${Icon} name="camera" />Take photo</button>
-        <label class="btn" style="cursor:pointer"><${Icon} name="upload" />Upload<input id="media-upload" type="file" hidden accept="image/*,video/*" onChange=${pick} /></label>
-        <button class="btn" onClick=${sample} title="Adds a stand-in picture without choosing a file"><${Icon} name="sparkle" />Sample photo</button></div>` : html`<span class="pill"><${Icon} name="lock" size=${13} />View only</span>`}</div></div>
+        <label class="btn" style="cursor:pointer"><${Icon} name="upload" />Upload<input id="media-upload" type="file" hidden accept=${isCloud() ? 'image/*' : 'image/*,video/*'} onChange=${pick} /></label>
+        ${!isCloud() && html`<button class="btn" onClick=${sample} title="Adds a stand-in picture without choosing a file"><${Icon} name="sparkle" />Sample photo</button>`}</div>` : html`<span class="pill"><${Icon} name="lock" size=${13} />View only</span>`}</div></div>
     ${!list.length ? html`<div class="card"><${Empty} emoji="📷" title="No photos yet">${canAdd ? 'Be the first to add one.' : 'Check back after the event.'}<//></div>`
       : html`<div class="photos">${list.map((m, i) => html`<button key=${m.id} class=${'photo c-' + (m.tone || 'lav')} onClick=${() => setView(i)} aria-label=${m.caption || 'Open photo'}><${Shot} m=${m} />
         ${m.type === 'video' && html`<span class="badge pill c-sky"><${Icon} name="video" size=${13} />Video</span>`}${m.lost && html`<span class="badge pill">Image not stored</span>`}<span class="cap">${m.caption}<br /><span style="opacity:.8;font-weight:600">${user(m.userId).name.split(' ')[0]} · ${ago(m.at)}</span></span></button>`)}</div>`}

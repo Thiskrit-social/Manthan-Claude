@@ -16,6 +16,15 @@ export const CATEGORIES = [
   { id: 'celebration', label: 'Celebration', emoji: '🎉', tone: 'mint' },
   { id: 'other', label: 'Other', emoji: '✨', tone: 'lav' },
 ];
+// One-tap starting points for the most common events. A template only fills in the form; everything can be changed.
+export const TEMPLATES = [
+  { id: 'birthday', label: 'Birthday party', emoji: '🎂', tone: 'coral', category: 'birthday', start: '18:00', end: '22:00', expected: 20, description: 'Come and celebrate! Food, cake and good company. Let me know if you can make it.' },
+  { id: 'houseparty', label: 'House party', emoji: '🪩', tone: 'lav', category: 'houseparty', start: '20:00', end: '23:30', expected: 25, description: 'Drinks, music and good people at my place. Bring a friend if you like.' },
+  { id: 'dinner', label: 'Dinner', emoji: '🍝', tone: 'butter', category: 'dinner', start: '19:30', end: '22:30', expected: 8, description: 'A relaxed dinner together. Tell me about anything you can’t eat.' },
+  { id: 'meetup', label: 'Community meetup', emoji: '🤝', tone: 'mint', category: 'networking', start: '18:30', end: '21:00', expected: 40, privacy: 'link', description: 'An evening to meet people, swap ideas and hear a couple of short talks.' },
+  { id: 'wedding', label: 'Wedding', emoji: '💐', tone: 'coral', category: 'wedding', start: '14:00', end: '23:00', expected: 80, description: 'We’re getting married and would love you to be there. Please reply so we can plan the day.' },
+];
+
 export const category = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
 // Workspace sections (modules). `setup` is always available to the owner.

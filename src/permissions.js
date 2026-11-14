@@ -1,6 +1,6 @@
 // Permission checks are always scoped to one event and derived from the member's role in that event.
 // The owner can do everything; every other role reads the event's editable permission matrix.
-import { S, eventById, roleIn, meId, teamMembers, myTeams, tasksOf, has } from './store.js';
+import { S, eventById, roleIn, meId, teamMembers, myTeams, tasksOf, has, isCloud } from './store.js';
 
 export function can(eventId, cap, userId = meId()) {
   const role = roleIn(eventId, userId);
@@ -49,7 +49,8 @@ export function sectionsFor(ev) {
     budget: can(id, 'viewBudget'),
     gallery: can(id, 'viewOrganiserGallery') || can(id, 'viewMemories'),
     updates: true,
-    files: can(id, 'viewFiles') || role === 'vendor',
+    // File storage is not built yet, so real accounts do not see the section. The demo keeps its labelled stand-in.
+    files: !isCloud() && (can(id, 'viewFiles') || role === 'vendor'),
   };
   const list = ev.modules.filter((m) => show[m]);
   if (canPlan(id)) list.splice(1, 0, 'planner');

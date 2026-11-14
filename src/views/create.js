@@ -1,7 +1,7 @@
 // Multi-step event creation. Finishing it generates the event's workspace from the chosen size preset.
 import { html, useState } from '../lib.js';
-import { CATEGORIES, COMPLEXITY, PRIVACY, TONES, SECTIONS, FEATURES, category, suggestComplexity } from '../config.js';
-import { createEvent } from '../store.js';
+import { CATEGORIES, COMPLEXITY, PRIVACY, TONES, SECTIONS, FEATURES, TEMPLATES, category, suggestComplexity } from '../config.js';
+import { createEvent, isCloud } from '../store.js';
 import { go, Icon, Field, Cover, Pill, toast } from '../ui.js';
 import { cx, addDays, fmtLong, fmtTime, readImage } from '../utils.js';
 
@@ -12,6 +12,10 @@ export function CreateEvent() {
   const [step, setStep] = useState(0); const [touched, setTouched] = useState(false); const [withTeams, setWithTeams] = useState(true);
   const [d, setD] = useState({ name: '', category: 'houseparty', description: '', date: addDays(14), start: '19:00', end: '23:00', location: '', expected: 15, privacy: 'private', complexity: 'simple', cover: { tone: 'lav', emoji: '🪩' } });
   const set = (k) => (e) => setD({ ...d, [k]: e.target.value }); const suggested = suggestComplexity(+d.expected); const preset = COMPLEXITY[d.complexity];
+  const [tpl, setTpl] = useState(null);
+  // A template fills in the usual details for that kind of event. The name and anything already typed stay.
+  const useTemplate = (t) => { setTpl(t.id); setTouched(false); setD({ ...d, category: t.category, description: t.description, start: t.start, end: t.end, expected: t.expected, privacy: t.privacy || 'private',
+    complexity: suggestComplexity(t.expected), cover: d.cover.image ? d.cover : { tone: t.tone, emoji: t.emoji } }); toast(`${t.label} template applied. Change anything you like.`); };
   const pickCategory = (c) => setD({ ...d, category: c.id, cover: d.cover.image ? d.cover : { tone: c.tone, emoji: c.emoji } });
   const next = () => { if (step === 0 && !d.name.trim()) return toast('Give your event a name'); if (step === 1 && !d.date) return toast('Pick a date');
     if (step === 1 && !touched) setD((x) => ({ ...x, complexity: suggestComplexity(+x.expected) })); setStep(step + 1); };
@@ -20,6 +24,7 @@ export function CreateEvent() {
     <div class="col gap-s"><div class="row between"><span class="eyebrow">Step ${step + 1} of ${STEPS.length}</span><button class="btn ghost sm" onClick=${() => go('home')}>Cancel</button></div><h1>${step === 0 ? 'What are you planning?' : STEPS[step]}</h1>
       <div class="steps">${STEPS.map((_, i) => html`<i key=${i} class=${cx(i <= step && 'on')}></i>`)}</div></div>
     ${step === 0 && html`<div class="card col gap-l">
+      <div class="col gap-s"><span class="eyebrow">Start from a template (optional)</span><div class="chips">${TEMPLATES.map((t) => html`<button key=${t.id} id=${'tpl-' + t.id} class=${cx('chip', tpl === t.id && 'on')} aria-pressed=${tpl === t.id} onClick=${() => useTemplate(t)}>${t.emoji} ${t.label}</button>`)}</div></div>
       <${Field} label="Event name"><input id="event-name" class="input" style="font:700 1.2rem var(--display)" autofocus placeholder="e.g. Rooftop birthday" value=${d.name} onInput=${set('name')} /><//>
       <div class="col gap-s"><span class="eyebrow">Category</span><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))">${CATEGORIES.map((c) => html`<button key=${c.id} class=${cx('pick center', d.category === c.id && 'on')} onClick=${() => pickCategory(c)}><span style="font-size:1.5rem">${c.emoji}</span>${c.label}</button>`)}</div></div>
       <${Field} label="Description"><textarea id="event-description" class="input" placeholder="Tell guests what to expect" value=${d.description} onInput=${set('description')}></textarea><//></div>`}
@@ -38,7 +43,7 @@ export function CreateEvent() {
       <div class="grid g3">${Object.entries(COMPLEXITY).map(([k, c]) => html`<button key=${k} class=${cx('pick', d.complexity === k && 'on')} onClick=${() => { setD({ ...d, complexity: k }); setTouched(true); }}>
         <div class="row between"><span style="font-size:1.7rem">${c.emoji}</span>${suggested === k && html`<${Pill} tone="mint">Suggested<//>`}</div><h3>${c.label} event</h3><span class="small muted">${c.blurb}</span></button>`)}</div>
       <div class=${'card tint col c-' + preset.tone}><h3>Your workspace starts with</h3>
-        <div class="chips">${SECTIONS.filter((s) => preset.modules.includes(s.id)).map((s) => html`<span class="chip" key=${s.id}><${Icon} name=${s.icon} size=${14} />${s.id === 'teams' ? preset.teamWord + 's' : s.label}</span>`)}</div>
+        <div class="chips">${SECTIONS.filter((s) => preset.modules.includes(s.id) && !(isCloud() && s.id === 'files')).map((s) => html`<span class="chip" key=${s.id}><${Icon} name=${s.icon} size=${14} />${s.id === 'teams' ? preset.teamWord + 's' : s.label}</span>`)}</div>
         <div class="chips">${FEATURES.filter((f) => preset.features.includes(f.id)).map((f) => html`<span class="pill" key=${f.id}>+ ${f.label}</span>`)}</div>
         <span class="small" style="color:var(--ci)">You can switch on anything else later, without starting a new event.</span></div>
       <button class=${cx('pick', withTeams && 'on')} style="flex-direction:row;align-items:center;gap:12px" role="switch" aria-checked=${withTeams} onClick=${() => setWithTeams(!withTeams)}><span class=${cx('tick', withTeams && 'on')}><${Icon} name="check" /></span>

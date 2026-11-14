@@ -1,7 +1,7 @@
 // Teams and committees: overview grid and a team page (members, tasks, budget, discussion, attachments).
 import { html, useState } from '../lib.js';
 import { TEAM_STATUS, TONES, COMPLEXITY } from '../config.js';
-import { committeesOf, teamMembers, leadOf, tasksOf, progress, budgetOf, membersOf, postsOf, filesOf, createCommittee, updateCommittee, deleteCommittee, setTeamMember, removeTeamMember, postUpdate, has, roleIn, meId, user, ensureUser } from '../store.js';
+import { committeesOf, teamMembers, leadOf, tasksOf, progress, budgetOf, membersOf, postsOf, filesOf, createCommittee, updateCommittee, deleteCommittee, setTeamMember, removeTeamMember, postUpdate, has, roleIn, meId, user, ensureUser, isCloud } from '../store.js';
 import { can, canManageTeam, inTeam, canCreateTask, canSeePost } from '../permissions.js';
 import { Icon, Avatar, Stack, Pill, StatusPill, Bar, Field, Modal, Confirm, Empty, UserSelect, toast, Person, Rich, Sim } from '../ui.js';
 import { cx, money, ago } from '../utils.js';
@@ -77,7 +77,7 @@ function TeamPage({ ev, c, onBack }) {
             <div class="row"><input class="input" placeholder="Or invite by name" value=${adding} onInput=${(e) => setAdding(e.target.value)} onKeyDown=${(e) => e.key === 'Enter' && addPerson()} /><button class="btn sm" onClick=${addPerson}>Invite</button></div></div>`}</div>
         ${b && html`<div class="card col"><h3>Budget</h3><div class="row between"><div class="stat"><span class="v">${money(b.actual)}</span><span class="k">spent of ${money(b.allocated)}</span></div><div class="stat" style="text-align:right"><span class="v">${money(b.allocated - b.planned)}</span><span class="k">unplanned</span></div></div>
           <div class="budget-bar"><i class="planned" style=${`width:${Math.min(100, (b.planned / (b.allocated || 1)) * 100)}%`}></i><i class="actual" style=${`width:${Math.min(100, (b.actual / (b.allocated || 1)) * 100)}%`}></i></div><span class="tiny muted">Solid is paid, pale is planned.</span></div>`}
-        ${inside && html`<div class="card col"><h3>Attachments</h3>${files.length ? files.map((f) => html`<div class="row small" key=${f.id}><${Icon} name="file" /><span class="grow clip">${f.name}</span><span class="muted">${f.size}</span></div>`) : html`<p class="small muted">Files added to this team appear here.</p>`}</div>`}
+        ${inside && !isCloud() && html`<div class="card col"><h3>Attachments</h3>${files.length ? files.map((f) => html`<div class="row small" key=${f.id}><${Icon} name="file" /><span class="grow clip">${f.name}</span><span class="muted">${f.size}</span></div>`) : html`<p class="small muted">Files added to this team appear here.</p>`}</div>`}
       </div>
     </div>
     ${edit && html`<${TeamModal} ev=${ev} team=${c} onClose=${() => setEdit(false)} />`}

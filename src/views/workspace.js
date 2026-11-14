@@ -2,7 +2,7 @@
 // what differs between a house party and a conference is the event's modules, features and permissions.
 import { html, useState, useEffect } from '../lib.js';
 import { SECTIONS, COMPLEXITY, FEATURES, CAPS, PRIVACY, CATEGORIES, category, RSVP, by } from '../config.js';
-import { eventById, roleIn, rsvpStats, tasksOf, progress, scheduleOf, postsOf, activityOf, committeesOf, invitationsOf, invitationFor, budgetOf, updateEvent, setComplexity, toggleIn, deleteEvent, has, user, meId, mediaOf } from '../store.js';
+import { eventById, roleIn, rsvpStats, tasksOf, progress, scheduleOf, postsOf, activityOf, committeesOf, invitationsOf, invitationFor, budgetOf, updateEvent, setComplexity, toggleIn, deleteEvent, has, user, meId, mediaOf, isCloud } from '../store.js';
 import { can, sectionsFor, visibleTasks, canSeePost, canCreateTask, isOwner } from '../permissions.js';
 import { go, Icon, Avatar, Stack, Pill, RolePill, Bar, Cover, When, Field, Switch, Confirm, Empty, toast, Rich } from '../ui.js';
 import { cx, fmtLong, fmtTime, fmtDate, parse, ago, money, daysUntil } from '../utils.js';
@@ -70,7 +70,7 @@ function Setup({ ev }) {
     <div class="card col"><h3>Workspace size</h3><p class="small muted">Change this any time. Moving up adds sections and tools. Nothing you have made is ever removed.</p>
       <div class="grid g3">${Object.entries(COMPLEXITY).map(([k, c]) => html`<button key=${k} class=${cx('pick', ev.complexity === k && 'on')} onClick=${() => { if (ev.complexity !== k) { setComplexity(ev.id, k); toast(`Workspace is now ${c.label}`); } }}><span style="font-size:1.5rem">${c.emoji}</span><b>${c.label} event</b><span class="small muted">${c.blurb}</span></button>`)}</div></div>
     <div class="grid g2">
-      <div class="card col"><h3>Sections</h3>${SECTIONS.filter((s) => !['overview', 'planner', 'setup'].includes(s.id)).map((s) => html`<div class="row" key=${s.id}><${Icon} name=${s.icon} /><b class="grow">${s.label}</b><${Switch} on=${ev.modules.includes(s.id)} label=${s.label} onChange=${() => toggleIn(ev.id, 'modules', s.id)} /></div>`)}</div>
+      <div class="card col"><h3>Sections</h3>${SECTIONS.filter((s) => !['overview', 'planner', 'setup'].includes(s.id) && !(isCloud() && s.id === 'files')).map((s) => html`<div class="row" key=${s.id}><${Icon} name=${s.icon} /><b class="grow">${s.label}</b><${Switch} on=${ev.modules.includes(s.id)} label=${s.label} onChange=${() => toggleIn(ev.id, 'modules', s.id)} /></div>`)}</div>
       <div class="card col"><h3>Extra tools</h3>${FEATURES.map((f) => html`<div class="row" key=${f.id}><div class="col grow" style="gap:0"><b>${f.label}</b><span class="tiny muted">${f.hint}</span></div><${Switch} on=${has(ev, f.id)} label=${f.label} onChange=${() => toggleIn(ev.id, 'features', f.id)} /></div>`)}</div>
     </div>
     <div class="card col"><h3>Roles and permissions</h3><p class="small muted">Permissions apply to this event only. Owners can always do everything. Being invited never unlocks budgets, internal discussions or contracts unless you switch it on here.</p>
