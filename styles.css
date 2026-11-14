@@ -226,3 +226,5 @@ td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: middl
 .auth-card { width: min(100%, 420px); background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 26px; }
 .sync { display: flex; align-items: center; gap: 7px; font-size: .78rem; font-weight: 700; color: var(--muted); padding: 0 10px; }
 .sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
+.btn.disabled { opacity: .45; }
+a.btn { text-decoration: none; }

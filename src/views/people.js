@@ -1,10 +1,12 @@
 // People and invitations: guest list, RSVP handling, event team and vendors.
-import { html, useState } from '../lib.js';
+import { html, useState, useEffect } from '../lib.js';
 import { RSVP, ROLES, ROLE_ORDER, by } from '../config.js';
-import { S, invitationsOf, invitationFor, rsvpStats, membersOf, addGuest, updateInvitation, setRsvp, respondToInvite, removeInvitation, toggleCheckIn, remind, addMember, setRole, removeMember, ensureUser, has, user, roleIn, myTeams, meId } from '../store.js';
+import { S, invitationsOf, invitationFor, rsvpStats, membersOf, addGuest, updateInvitation, setRsvp, respondToInvite, removeInvitation, toggleCheckIn, remind, addMember, setRole, removeMember, ensureUser, has, user, roleIn, myTeams, meId, me, isCloud } from '../store.js';
+import { personalToken, emailSetup, sendInviteEmails } from '../backend.js';
+import { eventLink, personalLinkFor, inviteText, inviteSubject, whatsappUrl, mailtoUrl, waNumber, validEmail } from '../invites.js';
 import { can, isOwner } from '../permissions.js';
 import { Icon, Avatar, Pill, RolePill, Seg, Field, Modal, Confirm, Switch, Empty, Sim, toast, copyText, Person, Tick } from '../ui.js';
-import { cx, fmtTime } from '../utils.js';
+import { cx, fmtTime, ago } from '../utils.js';
 
 const RsvpPill = ({ status }) => { const o = by(RSVP, status); return html`<${Pill} tone=${o.tone} dot>${o.label}<//>`; };
 
@@ -33,18 +35,20 @@ export function RsvpCard({ ev, compact }) {
 }
 
 function GuestModal({ ev, inv, onClose }) {
-  const [d, setD] = useState(inv ? { name: inv.name, email: inv.email, group: inv.group, plusOneAllowed: inv.plusOneAllowed, ...inv.rsvp } : { name: '', email: '', group: '', plusOneAllowed: has(ev, 'plusOnes') });
+  const [d, setD] = useState(inv ? { name: inv.name, email: inv.email, phone: inv.phone || '', group: inv.group, plusOneAllowed: inv.plusOneAllowed, ...inv.rsvp } : { name: '', email: '', phone: '', group: '', plusOneAllowed: has(ev, 'plusOnes') });
   const set = (k) => (e) => setD({ ...d, [k]: e.target.value });
   const save = () => {
     if (!d.name.trim()) return toast('Add a name first');
-    if (inv) { updateInvitation(inv.id, { name: d.name, email: d.email, group: d.group, plusOneAllowed: d.plusOneAllowed }); setRsvp(inv.id, { status: d.status, plusOne: d.plusOne, plusOneName: d.plusOneName, dietary: d.dietary, arrival: d.arrival }); toast('Invitation updated'); }
-    else { addGuest(ev.id, d); toast(`${d.name} added to the guest list`, true); }
+    if (d.email.trim() && !validEmail(d.email)) return toast('That email address doesn’t look right');
+    if (inv) { updateInvitation(inv.id, { name: d.name, email: d.email.trim(), phone: d.phone.trim(), group: d.group, plusOneAllowed: d.plusOneAllowed }); setRsvp(inv.id, { status: d.status, plusOne: d.plusOne, plusOneName: d.plusOneName, dietary: d.dietary, arrival: d.arrival }); toast('Invitation updated'); }
+    else { const id = addGuest(ev.id, { ...d, email: d.email.trim(), phone: d.phone.trim() }); toast(`${d.name} added to the guest list`); onClose(id); return; }
     onClose();
   };
   return html`<${Modal} title=${inv ? 'Edit invitation' : 'Add a guest'} eyebrow=${ev.name} onClose=${onClose}
     footer=${html`${inv && html`<${Confirm} label="Remove guest" onConfirm=${() => { removeInvitation(inv.id); onClose(); toast('Guest removed'); }} /><span class="grow"></span>`}<button class="btn" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${save}>${inv ? 'Save' : 'Add guest'}</button>`}>
     <div class="form-grid"><${Field} label="Name"><input class="input" value=${d.name} onInput=${set('name')} placeholder="Full name" list="known-people" /><//>
       <${Field} label="Email"><input class="input" type="email" value=${d.email} onInput=${set('email')} placeholder="name@example.com" /><//>
+      <${Field} label="WhatsApp number" hint="With the country code, e.g. +44 7700 900123"><input id="guest-phone" class="input" type="tel" value=${d.phone} onInput=${set('phone')} placeholder="+44 …" /><//>
       <${Field} label="Group or tag"><input class="input" value=${d.group} onInput=${set('group')} placeholder="e.g. Friend, Alumni" /><//></div>
     <datalist id="known-people">${Object.values(S().users).map((u) => html`<option value=${u.name}></option>`)}</datalist>
     ${has(ev, 'plusOnes') && html`<div class="row"><${Switch} on=${d.plusOneAllowed} label="Allow a plus-one" onChange=${(v) => setD({ ...d, plusOneAllowed: v })} /><span class="b">Allow a plus-one</span></div>`}
@@ -54,7 +58,46 @@ function GuestModal({ ev, inv, onClose }) {
         <${Field} label="Dietary"><input class="input" value=${d.dietary} onInput=${set('dietary')} /><//></div>
         ${d.plusOneAllowed && html`<div class="row"><${Switch} on=${d.plusOne} label="Bringing a plus-one" onChange=${(v) => setD({ ...d, plusOne: v })} /><span class="b">Bringing a plus-one</span>${d.plusOne && html`<input class="input" style="max-width:200px" placeholder="Name" value=${d.plusOneName} onInput=${set('plusOneName')} />`}</div>`}
         ${inv.rsvp.message && html`<div class="card flat small">“${inv.rsvp.message}”</div>`}`
-      : html`<p class="small muted">The guest appears on your list straight away. <${Sim}>No email is sent<//> Share the invitation link so they can reply themselves.</p>`}
+      : html`<p class="small muted">The guest appears on your list straight away. Next you can send them their personal invitation by WhatsApp or email.</p>`}
+  <//>`;
+}
+
+const sentLabel = (inv) => {
+  const s = inv.sent || {}; const parts = [];
+  if (s.email) parts.push(`Emailed ${ago(s.email)}`); if (s.emailApp) parts.push(`Email opened ${ago(s.emailApp)}`); if (s.whatsapp) parts.push(`WhatsApp opened ${ago(s.whatsapp)}`);
+  return parts.join(' · ');
+};
+const markSent = (inv, how) => updateInvitation(inv.id, { sent: { ...(inv.sent || {}), [how]: new Date().toISOString() } });
+
+// Sending one guest their invitation: WhatsApp or the host's email app with the message written
+// (free, sent from the host's own account), or an automatic email when that is set up.
+export function InviteSheet({ ev, inv, onClose }) {
+  const kind = inv.rsvp.status === 'pending' && Object.keys(inv.sent || {}).length ? 'reminder' : 'invite';
+  const [link, setLink] = useState(isCloud() ? null : eventLink(ev)); const [error, setError] = useState('');
+  const [phone, setPhone] = useState(inv.phone || ''); const [email, setEmail] = useState(inv.email || '');
+  const [auto, setAuto] = useState(false); const [busy, setBusy] = useState(false); const [text, setText] = useState('');
+  const host = me()?.name;
+  useEffect(() => { if (isCloud()) { personalToken(inv.id).then((t) => setLink(personalLinkFor(ev, t))).catch((e) => setError(e.message)); emailSetup().then(setAuto); } }, [inv.id]);
+  useEffect(() => { if (link) setText(inviteText(ev, inv.name, link, { kind, host })); }, [link]);
+  const saveContact = () => { const patch = {}; if (phone.trim() !== (inv.phone || '')) patch.phone = phone.trim(); if (email.trim() !== (inv.email || '') && (!email.trim() || validEmail(email))) patch.email = email.trim(); if (Object.keys(patch).length) updateInvitation(inv.id, patch); };
+  const wa = waNumber(phone); const okEmail = validEmail(email);
+  const sendAuto = async () => { saveContact(); setBusy(true); try { const r = await sendInviteEmails(ev.id, [inv.id], kind); toast(r.sent ? `Email sent to ${inv.name}` : `Couldn’t send: ${r.failed?.[0]?.error || 'unknown error'}`); if (r.sent) onClose(); } catch (e) { toast(e.message); } setBusy(false); };
+  return html`<${Modal} title=${(kind === 'reminder' ? 'Remind ' : 'Invite ') + inv.name} eyebrow=${ev.name} onClose=${onClose} footer=${html`<button class="btn" onClick=${onClose}>Done</button>`}>
+    ${error ? html`<div class="banner c-coral">${error}</div>` : !link ? html`<p class="muted">Preparing their personal link…</p>` : html`
+      <${Field} label="Message" hint=${isCloud() ? 'The link is personal to this guest: it lets them reply even to an invite-only event.' : 'In the demo this is the event’s general link.'}>
+        <textarea id="invite-text" class="input" style="min-height:96px" value=${text} onInput=${(e) => setText(e.target.value)}></textarea><//>
+      <div class="form-grid">
+        <${Field} label="WhatsApp number" hint=${phone && !wa ? 'Add the country code, e.g. +44, to open their chat directly.' : 'With the country code.'}><input id="invite-phone" class="input" type="tel" value=${phone} placeholder="+44 …" onInput=${(e) => setPhone(e.target.value)} onBlur=${saveContact} /><//>
+        <${Field} label="Email"><input id="invite-email" class="input" type="email" value=${email} placeholder="name@example.com" onInput=${(e) => setEmail(e.target.value)} onBlur=${saveContact} /><//></div>
+      <div class="grid g2">
+        <a id="send-whatsapp" class="btn primary" href=${whatsappUrl(phone, text)} target="_blank" rel="noopener" onClick=${() => { saveContact(); markSent(inv, 'whatsapp'); }}><${Icon} name="message" />${wa ? 'Send on WhatsApp' : 'WhatsApp: choose the chat'}</a>
+        ${auto && okEmail ? html`<button id="send-email-auto" class="btn primary" disabled=${busy} onClick=${sendAuto}><${Icon} name="send" />${busy ? 'Sending…' : 'Email it for me'}</button>`
+          : html`<a id="send-email-app" class=${cx('btn', !okEmail && 'disabled')} href=${okEmail ? mailtoUrl(email, inviteSubject(ev, kind), text) : undefined} aria-disabled=${!okEmail} onClick=${(e) => { if (!okEmail) { e.preventDefault(); toast('Add their email address first'); return; } saveContact(); markSent(inv, 'emailApp'); }}><${Icon} name="send" />Open in my email app</a>`}
+      </div>
+      ${auto && okEmail && html`<a id="send-email-app" class="small" href=${mailtoUrl(email, inviteSubject(ev, kind), text)} onClick=${() => { saveContact(); markSent(inv, 'emailApp'); }}>Or write it from my own email app</a>`}
+      <div class="row wrap"><button class="btn sm" onClick=${async () => toast((await copyText(text)) ? 'Message copied' : 'Copy isn’t available here')}><${Icon} name="link" size=${15} />Copy message</button>
+        ${sentLabel(inv) && html`<span class="small muted">${sentLabel(inv)}</span>`}</div>
+      <p class="tiny muted">WhatsApp and your email app open with the message ready: you press send, from your own account. ${auto ? 'Automatic emails come from Gather on your behalf, and replies go to you.' : ''}</p>`}
   <//>`;
 }
 
@@ -70,7 +113,9 @@ function MemberModal({ ev, onClose }) {
 }
 
 function Guests({ ev }) {
-  const [q, setQ] = useState(''); const [f, setF] = useState('all'); const [page, setPage] = useState(0); const [edit, setEdit] = useState(null);
+  const [q, setQ] = useState(''); const [f, setF] = useState('all'); const [page, setPage] = useState(0); const [edit, setEdit] = useState(null); const [send, setSend] = useState(null);
+  const [auto, setAuto] = useState(false); const [bulk, setBulk] = useState(''); const [armed, setArmed] = useState(false);
+  useEffect(() => { if (isCloud() && can(ev.id, 'manageGuests')) emailSetup().then(setAuto); }, []);
   const manage = can(ev.id, 'manageGuests'); const st = rsvpStats(ev.id); const dense = ev.complexity !== 'simple'; const per = dense ? 20 : 50;
   const all = invitationsOf(ev.id); const rank = { going: 0, maybe: 1, pending: 2, declined: 3 };
   const list = all.filter((i) => (f === 'all' || (f === 'in' ? i.checkedIn : i.rsvp.status === f)) && (i.name + ' ' + i.group + ' ' + i.rsvp.dietary).toLowerCase().includes(q.toLowerCase()))
@@ -85,10 +130,18 @@ function Guests({ ev }) {
       <div class="card tint c-grey stat"><span class="v">${st.pending}</span><span class="k">Waiting for a reply</span></div>
       <div class="card tint c-coral stat"><span class="v">${st.declined}</span><span class="k">Can’t go</span></div>
     </div>
-    ${manage && html`<div class="card col"><div class="row between wrap"><div class="col" style="gap:2px"><h3>Invitation link</h3><span class="small muted">Anyone who opens it can RSVP, add a plus-one and tell you what they eat.</span></div>
-      <div class="row wrap"><button class="btn" onClick=${() => (location.hash = `invite-${ev.id}`)}>Preview</button>
-        <button class="btn soft c-lav" onClick=${async () => toast((await copyText(link)) ? 'Invitation link copied' : link)}><${Icon} name="link" />Copy link</button>
-        <button class="btn" disabled=${!st.pending} onClick=${() => toast(`Reminder logged for ${remind(ev.id)} guests`, true)}><${Icon} name="bell" />Remind ${st.pending} waiting</button></div></div></div>`}
+    ${manage && html`<div class="card col"><div class="row between wrap"><div class="col" style="gap:2px"><h3>Send invitations</h3><span class="small muted">${ev.privacy === 'private' ? 'Invite only: each guest needs their personal link. Use the send button next to a guest.' : 'Share the event link anywhere, or send each guest their personal link.'}</span></div>
+      <div class="row wrap">${ev.privacy !== 'private' && html`<a id="share-whatsapp" class="btn soft c-mint" href=${whatsappUrl('', inviteText(ev, '', link, { host: me()?.name }))} target="_blank" rel="noopener"><${Icon} name="message" />Share on WhatsApp</a>
+        <button class="btn soft c-lav" onClick=${async () => toast((await copyText(link)) ? 'Event link copied' : link)}><${Icon} name="link" />Copy event link</button>`}
+        <button class="btn" onClick=${() => (location.hash = `invite-${ev.id}`)}>Preview</button></div></div>
+      ${(() => { const fresh = all.filter((i) => validEmail(i.email) && !(i.sent || {}).email && i.rsvp.status === 'pending'); const chase = all.filter((i) => validEmail(i.email) && (i.sent || {}).email && i.rsvp.status === 'pending');
+        const run = async (list, kind) => { setBulk(kind); setArmed(false); try { const r = await sendInviteEmails(ev.id, list.slice(0, 100).map((i) => i.id), kind); toast(`${r.sent} ${r.sent === 1 ? 'email' : 'emails'} sent${r.failed?.length ? `, ${r.failed.length} failed` : ''}`); } catch (e) { toast(e.message); } setBulk(''); };
+        return auto ? html`<div class="row wrap"><button id="email-all" class="btn primary" disabled=${!fresh.length || !!bulk} onClick=${() => (armed ? run(fresh, 'invite') : setArmed(true))}><${Icon} name="send" />${bulk === 'invite' ? 'Sending…' : armed ? `Tap again to email ${fresh.length}` : `Email ${fresh.length} not yet invited`}</button>
+            <button class="btn" disabled=${!chase.length || !!bulk} onClick=${() => run(chase, 'reminder')}><${Icon} name="bell" />${bulk === 'reminder' ? 'Sending…' : `Email a reminder to ${chase.length} waiting`}</button>
+            <span class="tiny muted">Up to 100 a day per event. Guests without an email address: use their send button.</span></div>`
+          : html`<div class="row wrap"><button class="btn" disabled=${!st.pending} onClick=${() => toast(`Reminder shown in the app for ${remind(ev.id)} guests`, true)}><${Icon} name="bell" />Remind ${st.pending} waiting in the app</button>
+            ${isCloud() && html`<span class="tiny muted">Automatic emails aren’t set up yet. You can still send each invitation by WhatsApp or from your email app.</span>`}</div>`; })()}
+      </div>`}
     <div class="card col">
       <div class="row wrap"><div class="row grow" style="min-width:200px"><${Icon} name="search" /><input id="guest-search" class="input" placeholder="Search guests, tags or dietary needs" value=${q} onInput=${(e) => { setQ(e.target.value); setPage(0); }} /></div>
         ${manage && html`<button class="btn primary" onClick=${() => setEdit('new')}><${Icon} name="plus" />Add guest</button>`}</div>
@@ -96,17 +149,18 @@ function Guests({ ev }) {
       ${!shown.length ? html`<${Empty} emoji="💌" title="No guests match">Try another filter, or add someone new.<//>` : html`<div class="table-wrap"><table>
         <thead><tr><th>Guest</th><th>RSVP</th><th>Arriving</th><th>Dietary</th>${has(ev, 'plusOnes') && html`<th>Plus-one</th>`}${has(ev, 'checkIn') && html`<th>Checked in</th>`}${manage && html`<th></th>`}</tr></thead>
         <tbody>${shown.map((i) => html`<tr key=${i.id}>
-          <td><span class="row gap-s"><${Avatar} id=${i.userId} name=${i.name} /><span class="col" style="gap:0"><b class="nowrap">${i.name}</b>${(i.group || i.rsvp.message) && html`<span class="tiny muted">${dense ? i.group : i.rsvp.message || i.group}</span>`}</span></span></td>
+          <td><span class="row gap-s"><${Avatar} id=${i.userId} name=${i.name} /><span class="col" style="gap:0"><b class="nowrap">${i.name}</b>${(i.group || i.rsvp.message) && html`<span class="tiny muted">${dense ? i.group : i.rsvp.message || i.group}</span>`}${manage && sentLabel(i) && html`<span class="tiny muted">${sentLabel(i)}</span>`}</span></span></td>
           <td>${manage ? html`<select class=${'input sm'} aria-label=${'RSVP for ' + i.name} value=${i.rsvp.status} onChange=${(e) => setRsvp(i.id, { status: e.target.value })}>${RSVP.map((o) => html`<option value=${o.id}>${o.label}</option>`)}</select>` : html`<${RsvpPill} status=${i.rsvp.status} />`}</td>
           <td class="num nowrap">${i.rsvp.arrival ? fmtTime(i.rsvp.arrival) : html`<span class="muted">–</span>`}</td>
           <td>${i.rsvp.dietary ? html`<${Pill} tone="butter">${i.rsvp.dietary}<//>` : html`<span class="muted">–</span>`}</td>
           ${has(ev, 'plusOnes') && html`<td class="nowrap">${i.rsvp.plusOne ? '+1 ' + (i.rsvp.plusOneName || '') : html`<span class="muted">${i.plusOneAllowed ? 'Allowed' : 'No'}</span>`}</td>`}
           ${has(ev, 'checkIn') && html`<td><${Tick} on=${i.checkedIn} disabled=${!manage} label=${'Check in ' + i.name} onClick=${() => toggleCheckIn(i.id)} /></td>`}
-          ${manage && html`<td class="nowrap">${i.rsvp.status === 'pending' && html`<button class="btn ghost sm" title="Send reminder" onClick=${() => { remind(ev.id, i.id); toast(`Reminder logged for ${i.name}`, true); }}><${Icon} name="bell" size=${15} />${i.reminders > 0 ? i.reminders : ''}</button>`}<button class="btn ghost sm" aria-label=${'Edit ' + i.name} onClick=${() => setEdit(i.id)}><${Icon} name="edit" size=${15} /></button></td>`}
+          ${manage && html`<td class="nowrap"><button class="btn ghost sm" aria-label=${'Send invitation to ' + i.name} title="Send invitation" onClick=${() => setSend(i.id)}><${Icon} name="send" size=${15} /></button><button class="btn ghost sm" aria-label=${'Edit ' + i.name} onClick=${() => setEdit(i.id)}><${Icon} name="edit" size=${15} /></button></td>`}
         </tr>`)}</tbody></table></div>`}
       ${pages > 1 && html`<div class="row between"><span class="small muted num">${page * per + 1}–${Math.min(list.length, page * per + per)} of ${list.length}</span><div class="row gap-s"><button class="btn sm" disabled=${page === 0} onClick=${() => setPage(page - 1)}>Previous</button><button class="btn sm" disabled=${page >= pages - 1} onClick=${() => setPage(page + 1)}>Next</button></div></div>`}
     </div>
-    ${edit && html`<${GuestModal} ev=${ev} inv=${edit === 'new' ? null : all.find((i) => i.id === edit)} onClose=${() => setEdit(null)} />`}`;
+    ${edit && html`<${GuestModal} ev=${ev} inv=${edit === 'new' ? null : all.find((i) => i.id === edit)} onClose=${(newId) => { setEdit(null); if (typeof newId === 'string') setSend(newId); }} />`}
+    ${send && all.find((i) => i.id === send) && html`<${InviteSheet} ev=${ev} inv=${all.find((i) => i.id === send)} onClose=${() => setSend(null)} />`}`;
 }
 
 function Team({ ev, vendors }) {

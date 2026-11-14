@@ -125,18 +125,18 @@ export function Profile({ onSwitch }) {
         ${!cloudConfig() && html`<div class="card col"><h3>Connect a backend</h3><p class="small muted">Point this copy at a Supabase project (with <code>supabase/schema.sql</code> applied) to get real accounts and shared data.</p><${ConnectBackend} /></div>`}`}`;
 }
 
-export function Invite({ eventId }) {
+export function Invite({ eventId, token }) {
   const known = eventById(eventId); const [preview, setPreview] = useState(undefined);
-  useEffect(() => { if (!known && isCloud()) invitePreview(eventId).then((p) => setPreview(p || null)).catch(() => setPreview(null)); }, [eventId, !!known]);
+  useEffect(() => { if (!known && isCloud()) invitePreview(eventId, token).then((p) => setPreview(p || null)).catch(() => setPreview(null)); }, [eventId, token, !!known]);
   if (!known && isCloud() && preview === undefined) return html`<div class="card"><${Empty} emoji="💌" title="Opening the invitation…"><//></div>`;
-  if (!known && preview?.private) return html`<div class="card"><${Empty} emoji="🔒" title="This event is invite only">Ask the host to add your email address, then sign in again.<//></div>`;
+  if (!known && preview?.private) return html`<div class="card"><${Empty} emoji="🔒" title="This event is invite only">Ask the host to send you your personal invitation link.<//></div>`;
   const ev = known || (preview && { ...preview, cover: preview.cover?.tone ? preview.cover : { tone: 'lav', emoji: '🎉' }, features: preview.features || [] });
   if (!ev) return html`<div class="card"><${Empty} emoji="💌" title="This invitation is no longer available">The event may have been deleted.<//></div>`;
   const role = roleIn(eventId); const st = known ? rsvpStats(eventId) : { going: ev.going || 0, maybe: ev.maybe || 0 }; const inv = invitationFor(eventId); const host = known ? user(ev.createdBy) : { name: ev.hostName || 'The host' };
   return html`<div class="col gap-l" style="max-width:640px;margin:0 auto;width:100%">
     <div class="row between wrap"><span class="eyebrow">Invitation</span>${!isCloud() && html`<${Sim}>Link preview, viewed as ${me().name.split(' ')[0]}<//>`}</div>
     <div class="card col gap-l" style="padding:12px 12px 22px"><${Cover} ev=${ev} size="hero" />
-      <div class="col" style="padding:0 10px;text-align:center;align-items:center"><span class="small muted">${host.name} invites you to</span><h1>${ev.name}</h1>
+      <div class="col" style="padding:0 10px;text-align:center;align-items:center"><span class="small muted">${!known && preview?.guestName ? `Hi ${preview.guestName.split(' ')[0]}, ` : ''}${host.name} invites you to</span><h1>${ev.name}</h1>
         <div class="row wrap" style="justify-content:center"><${Pill} tone="lav"><${Icon} name="calendar" size=${13} />${fmtLong(ev.date)}<//><${Pill} tone="butter"><${Icon} name="clock" size=${13} />${fmtTime(ev.start)}${ev.end ? '–' + fmtTime(ev.end) : ''}<//></div>
         <span class="row gap-s muted"><${Icon} name="pin" size=${15} />${ev.location || 'Location to be confirmed'}</span><p>${ev.description}</p>
         <span class="small muted">${st.going} going · ${st.maybe} maybe</span></div></div>

@@ -8,7 +8,7 @@ import { ROLES, by } from './config.js';
 export function route() {
   const h = (location.hash || '#home').slice(1); const p = h.split('-');
   if (p[0] === 'e' && p[1]) return { name: 'event', eventId: p[1], section: p[2] || 'overview' };
-  if (p[0] === 'invite' && p[1]) return { name: 'invite', eventId: p[1] };
+  if (p[0] === 'invite' && p[1]) return { name: 'invite', eventId: p[1], token: p[2] || null };
   return { name: ['home', 'events', 'mytasks', 'inbox', 'profile', 'new'].includes(h) ? h : 'home' };
 }
 export const go = (to) => { location.hash = to; window.scrollTo(0, 0); };

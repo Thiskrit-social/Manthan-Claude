@@ -133,7 +133,7 @@ export const deleteEvent = (id) => mutate((s) => {
 const blankRsvp = () => ({ status: 'pending', plusOne: false, plusOneName: '', dietary: '', arrival: '', message: '', respondedAt: null });
 export const addGuest = (eventId, d) => mutate((s) => {
   const u = d.userId ? s.users[d.userId] : Object.values(s.users).find((x) => x.name.toLowerCase() === d.name.trim().toLowerCase());
-  const inv = { id: uid('i'), eventId, userId: u?.id || null, name: u?.name || d.name.trim(), email: d.email || u?.email || '', group: d.group || '',
+  const inv = { id: uid('i'), eventId, userId: u?.id || null, name: u?.name || d.name.trim(), email: d.email || u?.email || '', phone: d.phone || '', sent: {}, group: d.group || '',
     plusOneAllowed: !!d.plusOneAllowed, invitedAt: now(), reminders: 0, checkedIn: false, rsvp: blankRsvp() };
   s.invitations.push(inv);
   if (u) { ensureMembership(s, eventId, u.id, 'guest'); notify(s, u.id, eventId, `You're invited to ${s.events.find((e) => e.id === eventId).name}`, `invite-${eventId}`); }

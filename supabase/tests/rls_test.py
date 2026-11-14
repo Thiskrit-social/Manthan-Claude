@@ -5,7 +5,7 @@ import os
 conn = psycopg2.connect(dbname=os.environ.get('PGDATABASE', 'gather'), user=os.environ.get('PGUSER', 'postgres'), host=os.environ.get('PGHOST', '/var/run/postgresql'))
 results = []
 def ok(c, m): results.append(c); print(('PASS ' if c else 'FAIL ') + m)
-U = {n: str(uuid.uuid4()) for n in ['alice', 'bob', 'carl', 'dana', 'erin', 'vic', 'zed', 'pat', 'quinn']}
+U = {n: str(uuid.uuid4()) for n in ['alice', 'bob', 'carl', 'dana', 'erin', 'vic', 'zed', 'pat', 'quinn', 'lin']}
 def admin(sql, a=None):
     with conn.cursor() as c: c.execute(sql, a); conn.commit()
 for n, u in U.items(): admin("insert into auth.users values (%s, %s)", (u, n + '@x.com'))
@@ -139,4 +139,29 @@ ok(run('alice', "select count(*) from announcements where text in ('Injected','P
 # --- delete cascades ---
 ok(run('bob', "delete from events where id=%s", (E,)) == 0, 'manager cannot delete the event')
 ok(run('alice', "delete from events where id=%s", (E,)) == 1 and run('alice', "select count(*) from tasks where event_id=%s", (E,))[0][0] == 0, 'owner deletes the event and everything in it goes with it')
+# --- personal invitation links, phone numbers and email sending ---
+run('alice', "insert into people (id,name,email,created_by) values ('pLin','Lin Helper','',%s)", (ids['alice'],))
+run('alice', "insert into invitations (id,event_id,user_id,name,phone) values ('iLin','evP','pLin','Lin Helper','+44 7700 900123')")
+run('alice', "insert into memberships values ('mLin','evP','pLin','member')"); run('alice', "insert into tasks (id,event_id,title,assignee_id) values ('tLin','evP','Bring chairs','pLin')")
+tok = run('alice', "select invite_link('iLin')")[0][0]; ok(isinstance(tok, str) and len(tok) >= 20, 'host gets a personal invitation token')
+ok(run('alice', "select invite_link('iLin')")[0][0] == tok, 'the same guest always gets the same link')
+ok(err(run('erin', "select invite_link('iLin')")), 'someone who cannot manage guests cannot get invitation links')
+ok(err(run('erin', "select count(*) from invitation_tokens")) or run('erin', "select count(*) from invitation_tokens")[0][0] == 0, 'tokens cannot be read directly')
+lin = pid('lin')
+ok(run('lin', "select invite_preview('evP')")[0][0] == {'id': 'evP', 'private': True}, 'without the personal link a private event stays hidden')
+pv = run('lin', "select invite_preview('evP', %s)", (tok,))[0][0]; ok(pv and pv.get('name') == 'Private dinner' and pv.get('guestName') == 'Lin Helper', 'the personal link previews a private event and greets the guest by name')
+ok(not err(run('lin', "select respond_to_invite('evP', '{\"status\":\"going\"}', %s)", (tok,))), 'RSVP with the personal link works for an invite-only event')
+ok(run('lin', "select gather_private.my_role('evP')")[0][0] == 'member' and run('lin', "select title from tasks where assignee_id = gather_private.me()") == [('Bring chairs',)], 'the role and tasks given to that name now belong to the account')
+ok(run('alice', "select count(*) from people where id = 'pLin'")[0][0] == 0 and run('alice', "select rsvp->>'status' from invitations where id='iLin'")[0][0] == 'going', 'the placeholder is folded in and the RSVP is recorded')
+qt = run('alice', "select invite_link('iQ')")[0][0]
+ok(err(run('zed', "select respond_to_invite('evP', '{\"status\":\"going\"}', %s)", (qt,))), 'a link already used by another account cannot be reused')
+ok(run('zed', "select gather_private.my_role('evP')")[0][0] is None, 'and it does not let anyone else in')
+ok(err(run('lin', "update invitations set phone = '+1' where id = 'iLin'")) and err(run('lin', "update invitations set sent = '{\"email\":\"x\"}' where id = 'iLin'")), 'guests cannot change their phone number or send history')
+run('alice', "insert into invitations (id,event_id,name,email) values ('iM1','evP','Mo','mo@x.com'),('iM2','evP','No email','')")
+r = run('alice', "select prepare_invite_emails('evP', array['iM1','iM2'], 'invite')")[0][0]
+ok(r['event']['name'] == 'Private dinner' and [x['email'] for x in r['recipients']] == ['mo@x.com'] and r['recipients'][0]['token'] and r['host']['name'] == 'Alice', 'email preparation returns only guests with an address, each with their link')
+ok(run('alice', "select sent ? 'email' from invitations where id='iM1'")[0][0] is True, 'the send is recorded on the invitation')
+r2 = run('alice', "select prepare_invite_emails('evP', array['iM1'], 'reminder')")[0][0]; ok(run('alice', "select reminders from invitations where id='iM1'")[0][0] == 1, 'reminders are counted')
+ok(err(run('lin', "select prepare_invite_emails('evP', array['iM1'], 'invite')")), 'guests cannot send invitation emails')
+ok(err(run('alice', "select prepare_invite_emails('evP', array(select 'x' || g from generate_series(1, 101) g), 'invite')")), 'more than 100 emails a day for one event is refused')
 print('\n%d passed, %d failed' % (sum(results), len(results) - sum(results)))

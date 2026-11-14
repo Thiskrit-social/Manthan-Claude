@@ -70,7 +70,7 @@ const SPECS = [
   { coll: 'committees', table: 'committees', rename: { group: 'team_group' }, cols: { id: null, eventId: null, name: '', description: '', icon: '⭐', tone: 'lav', status: 'ontrack', group: '' } },
   { coll: 'committeeMemberships', table: 'committee_memberships', cols: { id: null, committeeId: null, userId: null, role: 'member' } },
   { coll: 'invitations', table: 'invitations', rename: { group: 'guest_group' },
-    cols: { id: null, eventId: null, userId: null, name: '', email: '', group: '', plusOneAllowed: false, invitedAt: OMIT, reminders: 0, checkedIn: false, rsvp: { status: 'pending' } } },
+    cols: { id: null, eventId: null, userId: null, name: '', email: '', phone: '', group: '', plusOneAllowed: false, invitedAt: OMIT, reminders: 0, checkedIn: false, rsvp: { status: 'pending' }, sent: {} } },
   { coll: 'tasks', table: 'tasks', cols: { id: null, eventId: null, committeeId: null, title: '', description: '', assigneeId: null, due: '', priority: 'medium', status: 'todo', subtasks: [], checklist: [], dependsOn: [], comments: [], attachments: [], createdAt: OMIT } },
   { coll: 'scheduleItems', table: 'schedule_items', rename: { start: 'start_time', end: 'end_time' },
     cols: { id: null, eventId: null, userId: null, at: null, date: '', start: '', end: '', title: '', location: '', ownerId: null, description: '', checklist: [], reminder: 0 } },
@@ -253,10 +253,30 @@ export async function startCloud({ name, onError } = {}) {
 export const refresh = () => reload();
 
 /* ---------------- server-side actions ---------------- */
-export async function invitePreview(eventId) { const c = await sb(); return check(await c.rpc('invite_preview', { eid: eventId })); }
+export async function invitePreview(eventId, token) { const c = await sb(); return check(await c.rpc('invite_preview', { eid: eventId, p_token: token || null })); }
+// The token in a personal invitation link (#invite-<event>-<token>), if the page was opened from one.
+const linkToken = (eventId) => { const m = location.hash.match(/^#invite-([^-]+)-([A-Za-z0-9]+)$/); return m && m[1] === eventId ? m[2] : null; };
+const flushNow = async () => { if (pending()) { clearTimeout(timer); timer = null; await flush(); } };
+
+// A guest's personal link. Saves any pending changes first so a just-added guest exists on the server.
+export async function personalToken(invitationId) { const c = await sb(); await flushNow(); return check(await c.rpc('invite_link', { p_invitation: invitationId })); }
+
+// Automatic invitation email (Supabase Edge Function + Brevo). Whether it is set up is asked once.
+let emailCheck = null;
+export function emailSetup() {
+  if (!emailCheck) emailCheck = (async () => { try { const c = await sb(); const { data, error } = await c.functions.invoke('send-invites', { body: { action: 'status' } }); return !error && !!data?.configured; } catch { return false; } })();
+  return emailCheck;
+}
+export async function sendInviteEmails(eventId, invitationIds, kind = 'invite') {
+  const c = await sb(); await flushNow();
+  const { data, error } = await c.functions.invoke('send-invites', { body: { eventId, invitationIds, kind } });
+  if (error) { let msg = error.message; try { msg = (await error.context.json()).error || msg; } catch { /* keep */ } throw new Error(msg); }
+  await reload().catch(() => {});
+  return data;
+}
 async function joinViaInvite(eventId, patch) {
   const c = await sb();
-  try { if (pending()) { clearTimeout(timer); timer = null; await flush(); } check(await c.rpc('respond_to_invite', { eid: eventId, p_rsvp: patch })); await reload(); }
+  try { await flushNow(); check(await c.rpc('respond_to_invite', { eid: eventId, p_rsvp: patch, p_token: linkToken(eventId) })); await reload(); }
   catch (e) { reportError(friendly(e)); }
 }
 

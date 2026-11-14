@@ -107,9 +107,35 @@ own role and permission matrix. Budgets live in separate tables so guests never 
 change only their own RSVP; assignees can update progress but not task details; vendors see only what
 is shared with them; photos are in a private bucket with the same gallery rules.
 
-Invitations: adding a guest with an email address means that when they sign up (or next sign in) with
-that address, the event is waiting for them. Invitation links (`#invite-<event id>`) let anyone signed in
-RSVP to events set to "Anyone with the link". No emails are sent by the app yet.
+### Invitations by WhatsApp and email
+
+Each guest gets a **personal invitation link** (`#invite-<event>-<token>`). It works for invite-only
+events, greets the guest by name, and when they sign up it becomes theirs, along with any team or tasks
+the host already gave that name. The plain event link (`#invite-<event>`) works for events set to
+"Anyone with the link". Adding a guest with an email address also links them automatically when they
+sign up with that address.
+
+The send button next to each guest offers:
+
+- **WhatsApp**: opens WhatsApp with the message and link written, in that guest's chat if their number
+  has a country code. The host presses send. Free; WhatsApp's own API charges for business-sent
+  invitations, so the app doesn't use it.
+- **Email from your own app**: opens the host's email app with the message written. Free.
+- **Email it for me** (once set up): Gather sends it, from a verified sender, with replies going to the
+  host. The guest list can also email everyone not yet invited, and remind those still waiting.
+
+Automatic email uses the Edge Function in `supabase/functions/send-invites` and Brevo's free plan
+(300 emails a day). Set it up once:
+
+1. Create a free Brevo account, verify the address you want to send from (Senders), and create an API key
+   (SMTP & API → API keys).
+2. In Supabase, **Edge Functions → Secrets**: add `BREVO_API_KEY` and `SENDER_EMAIL`. Optionally `APP_URL`
+   if the site isn't at `https://manthan-gather.netlify.app/`.
+3. Deploy the function with JWT verification turned off (`supabase functions deploy send-invites --no-verify-jwt`);
+   it checks the signed-in person through the database instead.
+
+The database decides who may send: only people who can manage guests for that event, at most 100
+emails per event per day.
 
 ### Testing the database rules
 

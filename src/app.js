@@ -42,7 +42,7 @@ function App() {
   const active = r.name === 'event' || r.name === 'invite' ? 'events' : r.name;
   const mine = eventsFor();
   const view = r.name === 'event' ? html`<${Workspace} key=${r.eventId + u.id} eventId=${r.eventId} section=${r.section} />`
-    : r.name === 'invite' ? html`<${Invite} eventId=${r.eventId} />` : r.name === 'new' ? html`<${CreateEvent} />`
+    : r.name === 'invite' ? html`<${Invite} eventId=${r.eventId} token=${r.token} />` : r.name === 'new' ? html`<${CreateEvent} />`
     : r.name === 'events' ? html`<${Events} />` : r.name === 'mytasks' ? html`<${MyTasks} />` : r.name === 'inbox' ? html`<${Inbox} />`
     : r.name === 'profile' ? html`<${Profile} onSwitch=${() => setWho(true)} />` : html`<${Home} />`;
 
