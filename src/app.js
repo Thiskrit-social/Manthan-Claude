@@ -2,7 +2,7 @@
 import { html, render, useState, useEffect } from './lib.js';
 import { BRAND } from './config.js';
 import { subscribe, me, eventsFor, unreadCount, tasksFor, switchUser, S, isCloud } from './store.js';
-import { cloudConfig, getMode, session, startCloud, onStatus, syncStatus } from './backend.js';
+import { cloudConfig, getMode, setMode, session, startCloud, onStatus, syncStatus } from './backend.js';
 import { AuthGate, Splash } from './views/auth.js';
 import { PERSONAS } from './seed.js';
 import { route, go, Icon, Avatar, Toasts, Modal, Sim, toast } from './ui.js';
@@ -61,7 +61,7 @@ function App() {
     <div class="main">
       <header class="topbar"><a class="brand grow" href="#home" style="text-decoration:none;padding:0;font-size:1.15rem"><span class="brand-mark" style="width:28px;height:28px">${BRAND.mark}</span>${BRAND.name}</a>
         <button class="btn sm" aria-label="Profile" onClick=${() => go('profile')}><${Avatar} id=${u.id} size="sm" />${u.name.split(' ')[0]}</button></header>
-      <main class="page">${view}</main>
+      <main class="page">${!isCloud() && cloudConfig() && html`<div class="banner c-butter demo-banner" role="status"><span class="grow">You’re looking at the <b>demo</b>: Maya, Leo and the others are sample people, and nothing here is saved to an account.</span><button class="btn sm primary" onClick=${() => { setMode(null); location.hash = 'home'; location.reload(); }}>Sign in</button></div>`}${view}</main>
     </div>
     <nav class="tabbar" aria-label="Main">
       ${[NAV[0], NAV[1], null, NAV[2], NAV[3]].map((n) => (n ? html`<button key=${n.id} class=${cx('tab', active === n.id && 'on')} onClick=${() => go(n.id)}><${Icon} name=${n.icon} size=${22} />${n.label.replace('My ', '').replace('Notifications', 'Alerts')}${counts[n.id] > 0 && html`<span class="count">${counts[n.id]}</span>`}</button>`
@@ -82,8 +82,10 @@ function Root() {
     catch (e) { setError(e.message); setPhase('auth'); }
   };
   useEffect(() => {
-    if (!cloudConfig() || getMode() === 'demo') return setPhase('demo');
-    session().then((s) => (s ? enter() : setPhase('auth'))).catch((e) => { setError(e.message); setPhase('auth'); });
+    if (!cloudConfig()) return setPhase('demo');
+    // Someone who is signed in always gets their account, even if this tab was showing the demo.
+    session().then((s) => { if (s) { setMode(null); return enter(); } setPhase(getMode() === 'demo' ? 'demo' : 'auth'); })
+      .catch((e) => { if (getMode() === 'demo') return setPhase('demo'); setError(e.message); setPhase('auth'); });
   }, []);
   if (phase === 'boot' || phase === 'loading') return html`<${Splash} text=${phase === 'boot' ? 'Starting…' : 'Loading your events…'} />`;
   if (phase === 'auth') return html`<${AuthGate} onSignedIn=${enter} error=${error} />`;

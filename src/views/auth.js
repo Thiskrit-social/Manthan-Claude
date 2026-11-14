@@ -49,7 +49,7 @@ export function AuthGate({ onSignedIn, error }) {
 export function ConnectBackend() {
   const cur = cloudConfig(); const [d, setD] = useState({ url: cur?.url || 'https://bqofayrgxygsigbdugzu.supabase.co', anonKey: '' });
   const save = (e) => { e.preventDefault(); if (!/^https:\/\/.+/.test(d.url) || d.anonKey.trim().length < 20) return;
-    saveCloudConfig({ url: d.url.trim(), anonKey: d.anonKey.trim() }); setMode('cloud'); location.hash = 'home'; location.reload(); };
+    saveCloudConfig({ url: d.url.trim(), anonKey: d.anonKey.trim() }); setMode(null); location.hash = 'home'; location.reload(); };
   return html`<form class="col" onSubmit=${save}>
     <div class="form-grid"><${Field} label="Project URL"><input id="cfg-url" class="input" value=${d.url} onInput=${(e) => setD({ ...d, url: e.target.value })} /><//>
       <${Field} label="Anon (public) key" hint="Supabase dashboard: Project Settings, API Keys. Never paste the service_role key."><input id="cfg-key" class="input" autocomplete="off" value=${d.anonKey} onInput=${(e) => setD({ ...d, anonKey: e.target.value })} /><//></div>

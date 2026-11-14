@@ -121,7 +121,7 @@ export function Profile({ onSwitch }) {
         <div class="row wrap"><${SamplesButton} /></div></div>`
       : html`<div class="card col"><h3>About this demo</h3><p class="small muted">You are using local sample data. Your changes are saved in this browser only. Emails, invitations, file uploads and reminders are imitated and marked <${Sim} />. Photos you add stay on this device.</p>
         <div class="row wrap"><${Confirm} label="Reset demo data" small=${false} onConfirm=${() => { resetDemo(); go('home'); toast('Demo data restored'); }} />
-          ${cloudConfig() && html`<button class="btn primary" onClick=${() => { setMode('cloud'); location.hash = 'home'; location.reload(); }}>Sign in to save for real</button>`}</div></div>
+          ${cloudConfig() && html`<button class="btn primary" onClick=${() => { setMode(null); location.hash = 'home'; location.reload(); }}>Sign in to save for real</button>`}</div></div>
         ${!cloudConfig() && html`<div class="card col"><h3>Connect a backend</h3><p class="small muted">Point this copy at a Supabase project (with <code>supabase/schema.sql</code> applied) to get real accounts and shared data.</p><${ConnectBackend} /></div>`}`}`;
 }
 

@@ -20,8 +20,10 @@ export function cloudConfig() {
   return cfg.url && cfg.anonKey ? cfg : null;
 }
 export function saveCloudConfig(cfg) { ls.set(CFG_KEY, cfg ? JSON.stringify(cfg) : null); client = null; }
-export const getMode = () => ls.get(MODE_KEY);
-export const setMode = (m) => ls.set(MODE_KEY, m);
+// Choosing the demo lasts for this tab only, so it never hides a real account on the next visit.
+const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { /* ignore */ } } };
+export const getMode = () => ss.get(MODE_KEY);
+export const setMode = (m) => { ss.set(MODE_KEY, m === 'demo' ? 'demo' : null); ls.set(MODE_KEY, null); };
 
 /* ---------------- client ---------------- */
 let client = null; let libPromise = null;

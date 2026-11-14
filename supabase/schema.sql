@@ -620,7 +620,8 @@ begin
   if keep is null then
     insert into people (id, auth_user_id, name, email, tone, created_by)
     values ('u' || replace(uid::text, '-', ''), uid,
-            coalesce(nullif(trim(p_name), ''), nullif(split_part(my_email, '@', 1), ''), 'New user'), my_email,
+            coalesce(nullif(trim(p_name), ''), nullif(trim((select raw_user_meta_data ->> 'name' from auth.users where id = uid)), ''),
+                     nullif(split_part(my_email, '@', 1), ''), 'New user'), my_email,
             (array['lav','butter','coral','mint','sky'])[1 + floor(random() * 5)::int], null)
     returning id into keep;
   end if;
