@@ -227,92 +227,97 @@ create index if not exists activity_event on public.activity (event_id);
 
 -- ---------------------------------------------------------------------------------------------
 -- Helper functions. SECURITY DEFINER so policies can look up roles without recursing into RLS.
+-- They live in their own schema, which Supabase's API does not expose, so they cannot be called
+-- directly from outside; policies and the functions below use them.
 -- ---------------------------------------------------------------------------------------------
-create or replace function public.me() returns text
+create schema if not exists gather_private;
+revoke all on schema gather_private from public, anon;
+grant usage on schema gather_private to authenticated;
+create or replace function gather_private.me() returns text
 language sql stable security definer set search_path = public as $$
   select id from people where auth_user_id = auth.uid() limit 1
 $$;
 
-create or replace function public.my_role(eid text) returns text
+create or replace function gather_private.my_role(eid text) returns text
 language sql stable security definer set search_path = public as $$
-  select role from memberships where event_id = eid and user_id = public.me()
+  select role from memberships where event_id = eid and user_id = gather_private.me()
   order by case role when 'owner' then 1 when 'manager' then 2 when 'lead' then 3 when 'member' then 4 when 'vendor' then 5 else 6 end
   limit 1
 $$;
 
-create or replace function public.is_member(eid text) returns boolean
+create or replace function gather_private.is_member(eid text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select public.my_role(eid) is not null
+  select gather_private.my_role(eid) is not null
 $$;
 
-create or replace function public.is_creator(eid text) returns boolean
+create or replace function gather_private.is_creator(eid text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from events where id = eid and created_by = public.me())
+  select exists (select 1 from events where id = eid and created_by = gather_private.me())
 $$;
 
 -- Mirrors can() in the app: owners can do everything; other roles read the event's permission matrix.
-create or replace function public.can(eid text, cap text) returns boolean
+create or replace function gather_private.can(eid text, cap text) returns boolean
 language plpgsql stable security definer set search_path = public as $$
-declare r text := public.my_role(eid);
+declare r text := gather_private.my_role(eid);
 begin
   if r is null then return false; end if;
   if r = 'owner' then return true; end if;
   return coalesce((select (permissions -> r ->> cap)::boolean from events where id = eid), false);
 end $$;
 
-create or replace function public.has_feature(eid text, feature text) returns boolean
+create or replace function gather_private.has_feature(eid text, feature text) returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce((select features ? feature from events where id = eid), false)
 $$;
 
-create or replace function public.committee_event(cid text) returns text
+create or replace function gather_private.committee_event(cid text) returns text
 language sql stable security definer set search_path = public as $$
   select event_id from committees where id = cid
 $$;
 
-create or replace function public.in_committee(cid text) returns boolean
+create or replace function gather_private.in_committee(cid text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from committee_memberships where committee_id = cid and user_id = public.me())
+  select exists (select 1 from committee_memberships where committee_id = cid and user_id = gather_private.me())
 $$;
 
-create or replace function public.leads_committee(cid text) returns boolean
+create or replace function gather_private.leads_committee(cid text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from committee_memberships where committee_id = cid and user_id = public.me() and role = 'lead')
+  select exists (select 1 from committee_memberships where committee_id = cid and user_id = gather_private.me() and role = 'lead')
 $$;
 
-create or replace function public.leads_any(eid text) returns boolean
+create or replace function gather_private.leads_any(eid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from committee_memberships cm join committees c on c.id = cm.committee_id
-                 where c.event_id = eid and cm.user_id = public.me() and cm.role = 'lead')
+                 where c.event_id = eid and cm.user_id = gather_private.me() and cm.role = 'lead')
 $$;
 
 -- Whether a person is part of an event (member or invited).
-create or replace function public.person_in_event(pid text, eid text) returns boolean
+create or replace function gather_private.person_in_event(pid text, eid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from memberships where event_id = eid and user_id = pid)
       or exists (select 1 from invitations where event_id = eid and user_id = pid)
 $$;
 
 -- Whether the signed-in person shares at least one event with another person.
-create or replace function public.shares_event(pid text) returns boolean
+create or replace function gather_private.shares_event(pid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from memberships mine
-    where mine.user_id = public.me()
+    where mine.user_id = gather_private.me()
       and (exists (select 1 from memberships o where o.event_id = mine.event_id and o.user_id = pid)
         or exists (select 1 from invitations i where i.event_id = mine.event_id and i.user_id = pid)))
 $$;
 
-create or replace function public.can_view_gallery(eid text, gallery text) returns boolean
+create or replace function gather_private.can_view_gallery(eid text, gallery text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select case gallery when 'organiser' then public.can(eid, 'viewOrganiserGallery')
-                      when 'memories' then public.can(eid, 'viewMemories') else false end
+  select case gallery when 'organiser' then gather_private.can(eid, 'viewOrganiserGallery')
+                      when 'memories' then gather_private.can(eid, 'viewMemories') else false end
 $$;
 
-create or replace function public.can_add_gallery(eid text, gallery text) returns boolean
+create or replace function gather_private.can_add_gallery(eid text, gallery text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select case gallery when 'organiser' then public.can(eid, 'addOrganiserGallery')
-                      when 'memories' then public.can(eid, 'addMemories') else false end
+  select case gallery when 'organiser' then gather_private.can(eid, 'addOrganiserGallery')
+                      when 'memories' then gather_private.can(eid, 'addMemories') else false end
 $$;
 
 -- ---------------------------------------------------------------------------------------------
@@ -332,174 +337,174 @@ end $$;
 
 -- people: yourself, people you added, and people who share an event with you.
 create policy people_read on public.people for select to authenticated
-  using (id = public.me() or created_by = public.me() or public.shares_event(id));
+  using (id = gather_private.me() or created_by = gather_private.me() or gather_private.shares_event(id));
 create policy people_add on public.people for insert to authenticated
-  with check (created_by = public.me() and auth_user_id is null);
+  with check (created_by = gather_private.me() and auth_user_id is null);
 create policy people_edit on public.people for update to authenticated
-  using (id = public.me() or (created_by = public.me() and auth_user_id is null));
+  using (id = gather_private.me() or (created_by = gather_private.me() and auth_user_id is null));
 
 -- events
 create policy events_read on public.events for select to authenticated
-  using (public.is_member(id) or created_by = public.me());
+  using (gather_private.is_member(id) or created_by = gather_private.me());
 create policy events_add on public.events for insert to authenticated
-  with check (created_by = public.me());
+  with check (created_by = gather_private.me());
 create policy events_edit on public.events for update to authenticated
-  using (public.my_role(id) = 'owner') with check (public.my_role(id) = 'owner');
+  using (gather_private.my_role(id) = 'owner') with check (gather_private.my_role(id) = 'owner');
 create policy events_delete on public.events for delete to authenticated
-  using (public.my_role(id) = 'owner');
+  using (gather_private.my_role(id) = 'owner');
 
 -- event_private: budget total and planner state.
 create policy event_private_read on public.event_private for select to authenticated
-  using (public.can(event_id, 'viewBudget') or public.can(event_id, 'manageTeams'));
+  using (gather_private.can(event_id, 'viewBudget') or gather_private.can(event_id, 'manageTeams'));
 create policy event_private_add on public.event_private for insert to authenticated
-  with check (public.my_role(event_id) = 'owner');
+  with check (gather_private.my_role(event_id) = 'owner');
 create policy event_private_edit on public.event_private for update to authenticated
-  using (public.can(event_id, 'manageBudget') or public.can(event_id, 'manageTeams'));
+  using (gather_private.can(event_id, 'manageBudget') or gather_private.can(event_id, 'manageTeams'));
 
 -- memberships: who is in the event and with which role.
 create policy memberships_read on public.memberships for select to authenticated
-  using (public.is_member(event_id) or user_id = public.me());
+  using (gather_private.is_member(event_id) or user_id = gather_private.me());
 create policy memberships_add on public.memberships for insert to authenticated
   with check (
-    (role = 'owner' and user_id = public.me() and public.is_creator(event_id))
-    or public.my_role(event_id) = 'owner'
-    or (role <> 'owner' and public.can(event_id, 'manageTeams'))
-    or (role = 'guest' and public.can(event_id, 'manageGuests'))
-    or (role in ('member', 'lead') and public.leads_any(event_id)));
+    (role = 'owner' and user_id = gather_private.me() and gather_private.is_creator(event_id))
+    or gather_private.my_role(event_id) = 'owner'
+    or (role <> 'owner' and gather_private.can(event_id, 'manageTeams'))
+    or (role = 'guest' and gather_private.can(event_id, 'manageGuests'))
+    or (role in ('member', 'lead') and gather_private.leads_any(event_id)));
 create policy memberships_edit on public.memberships for update to authenticated
   using (
-    public.my_role(event_id) = 'owner'
-    or (role <> 'owner' and (public.can(event_id, 'manageTeams') or public.leads_any(event_id)))
-    or (user_id = public.me() and public.has_feature(event_id, 'volunteering')))
+    gather_private.my_role(event_id) = 'owner'
+    or (role <> 'owner' and (gather_private.can(event_id, 'manageTeams') or gather_private.leads_any(event_id)))
+    or (user_id = gather_private.me() and gather_private.has_feature(event_id, 'volunteering')))
   with check (
-    public.my_role(event_id) = 'owner'
-    or (role <> 'owner' and public.can(event_id, 'manageTeams'))
-    or (role in ('member', 'lead') and public.leads_any(event_id))
-    or (user_id = public.me() and role = 'member' and public.has_feature(event_id, 'volunteering')));
+    gather_private.my_role(event_id) = 'owner'
+    or (role <> 'owner' and gather_private.can(event_id, 'manageTeams'))
+    or (role in ('member', 'lead') and gather_private.leads_any(event_id))
+    or (user_id = gather_private.me() and role = 'member' and gather_private.has_feature(event_id, 'volunteering')));
 create policy memberships_delete on public.memberships for delete to authenticated
-  using (public.my_role(event_id) = 'owner' or (role <> 'owner' and public.can(event_id, 'manageTeams')));
+  using (gather_private.my_role(event_id) = 'owner' or (role <> 'owner' and gather_private.can(event_id, 'manageTeams')));
 
 -- invitations: the guest list. Guests always see their own invitation.
 create policy invitations_read on public.invitations for select to authenticated
-  using (public.can(event_id, 'viewGuests') or public.can(event_id, 'manageGuests') or user_id = public.me());
+  using (gather_private.can(event_id, 'viewGuests') or gather_private.can(event_id, 'manageGuests') or user_id = gather_private.me());
 create policy invitations_add on public.invitations for insert to authenticated
-  with check (public.can(event_id, 'manageGuests'));
+  with check (gather_private.can(event_id, 'manageGuests'));
 create policy invitations_edit on public.invitations for update to authenticated
-  using (public.can(event_id, 'manageGuests') or user_id = public.me());
+  using (gather_private.can(event_id, 'manageGuests') or user_id = gather_private.me());
 create policy invitations_delete on public.invitations for delete to authenticated
-  using (public.can(event_id, 'manageGuests'));
+  using (gather_private.can(event_id, 'manageGuests'));
 
 -- committees (teams). Names are visible to the whole event; budgets live in committee_budgets.
 create policy committees_read on public.committees for select to authenticated
-  using (public.is_member(event_id));
+  using (gather_private.is_member(event_id));
 create policy committees_add on public.committees for insert to authenticated
-  with check (public.can(event_id, 'manageTeams'));
+  with check (gather_private.can(event_id, 'manageTeams'));
 create policy committees_edit on public.committees for update to authenticated
-  using (public.can(event_id, 'manageTeams') or public.leads_committee(id));
+  using (gather_private.can(event_id, 'manageTeams') or gather_private.leads_committee(id));
 create policy committees_delete on public.committees for delete to authenticated
-  using (public.can(event_id, 'manageTeams'));
+  using (gather_private.can(event_id, 'manageTeams'));
 
 create policy committee_budgets_read on public.committee_budgets for select to authenticated
-  using (public.can(event_id, 'viewBudget'));
+  using (gather_private.can(event_id, 'viewBudget'));
 create policy committee_budgets_add on public.committee_budgets for insert to authenticated
-  with check (public.can(event_id, 'manageTeams') or public.can(event_id, 'manageBudget'));
+  with check (gather_private.can(event_id, 'manageTeams') or gather_private.can(event_id, 'manageBudget'));
 create policy committee_budgets_edit on public.committee_budgets for update to authenticated
-  using (public.can(event_id, 'manageTeams') or public.can(event_id, 'manageBudget'));
+  using (gather_private.can(event_id, 'manageTeams') or gather_private.can(event_id, 'manageBudget'));
 
 create policy committee_memberships_read on public.committee_memberships for select to authenticated
-  using (public.is_member(public.committee_event(committee_id)));
+  using (gather_private.is_member(gather_private.committee_event(committee_id)));
 create policy committee_memberships_add on public.committee_memberships for insert to authenticated
   with check (
-    public.can(public.committee_event(committee_id), 'manageTeams')
-    or public.leads_committee(committee_id)
-    or (user_id = public.me() and role = 'member' and public.has_feature(public.committee_event(committee_id), 'volunteering')));
+    gather_private.can(gather_private.committee_event(committee_id), 'manageTeams')
+    or gather_private.leads_committee(committee_id)
+    or (user_id = gather_private.me() and role = 'member' and gather_private.has_feature(gather_private.committee_event(committee_id), 'volunteering')));
 create policy committee_memberships_edit on public.committee_memberships for update to authenticated
-  using (public.can(public.committee_event(committee_id), 'manageTeams') or public.leads_committee(committee_id));
+  using (gather_private.can(gather_private.committee_event(committee_id), 'manageTeams') or gather_private.leads_committee(committee_id));
 create policy committee_memberships_delete on public.committee_memberships for delete to authenticated
-  using (public.can(public.committee_event(committee_id), 'manageTeams') or public.leads_committee(committee_id) or user_id = public.me());
+  using (gather_private.can(gather_private.committee_event(committee_id), 'manageTeams') or gather_private.leads_committee(committee_id) or user_id = gather_private.me());
 
 -- tasks: organisers with the permission and team leads manage; assignees update progress.
 create policy tasks_read on public.tasks for select to authenticated
-  using (public.can(event_id, 'viewTasks') or assignee_id = public.me() or public.leads_committee(committee_id));
+  using (gather_private.can(event_id, 'viewTasks') or assignee_id = gather_private.me() or gather_private.leads_committee(committee_id));
 create policy tasks_add on public.tasks for insert to authenticated
-  with check (public.can(event_id, 'manageTasks') or public.leads_committee(committee_id));
+  with check (gather_private.can(event_id, 'manageTasks') or gather_private.leads_committee(committee_id));
 create policy tasks_edit on public.tasks for update to authenticated
-  using (public.can(event_id, 'manageTasks') or public.leads_committee(committee_id) or assignee_id = public.me());
+  using (gather_private.can(event_id, 'manageTasks') or gather_private.leads_committee(committee_id) or assignee_id = gather_private.me());
 create policy tasks_delete on public.tasks for delete to authenticated
-  using (public.can(event_id, 'manageTasks') or public.leads_committee(committee_id));
+  using (gather_private.can(event_id, 'manageTasks') or gather_private.leads_committee(committee_id));
 
 -- schedule
 create policy schedule_read on public.schedule_items for select to authenticated
-  using (public.is_member(event_id));
+  using (gather_private.is_member(event_id));
 create policy schedule_add on public.schedule_items for insert to authenticated
-  with check (public.can(event_id, 'manageSchedule'));
+  with check (gather_private.can(event_id, 'manageSchedule'));
 create policy schedule_edit on public.schedule_items for update to authenticated
-  using (public.can(event_id, 'manageSchedule') or owner_id = public.me());
+  using (gather_private.can(event_id, 'manageSchedule') or owner_id = gather_private.me());
 create policy schedule_delete on public.schedule_items for delete to authenticated
-  using (public.can(event_id, 'manageSchedule'));
+  using (gather_private.can(event_id, 'manageSchedule'));
 
 -- expenses: confidential.
 create policy expenses_read on public.expenses for select to authenticated
-  using (public.can(event_id, 'viewBudget'));
+  using (gather_private.can(event_id, 'viewBudget'));
 create policy expenses_add on public.expenses for insert to authenticated
-  with check (public.can(event_id, 'manageBudget') or (public.can(event_id, 'viewBudget') and public.leads_committee(committee_id)));
+  with check (gather_private.can(event_id, 'manageBudget') or (gather_private.can(event_id, 'viewBudget') and gather_private.leads_committee(committee_id)));
 create policy expenses_edit on public.expenses for update to authenticated
-  using (public.can(event_id, 'manageBudget') or (public.can(event_id, 'viewBudget') and public.leads_committee(committee_id)));
+  using (gather_private.can(event_id, 'manageBudget') or (gather_private.can(event_id, 'viewBudget') and gather_private.leads_committee(committee_id)));
 create policy expenses_delete on public.expenses for delete to authenticated
-  using (public.can(event_id, 'manageBudget') or (public.can(event_id, 'viewBudget') and public.leads_committee(committee_id)));
+  using (gather_private.can(event_id, 'manageBudget') or (gather_private.can(event_id, 'viewBudget') and gather_private.leads_committee(committee_id)));
 
 -- media: each gallery has its own view and contribute permissions.
 create policy media_read on public.media for select to authenticated
-  using (public.can_view_gallery(event_id, gallery));
+  using (gather_private.can_view_gallery(event_id, gallery));
 create policy media_add on public.media for insert to authenticated
-  with check (user_id = public.me() and public.can_add_gallery(event_id, gallery));
+  with check (user_id = gather_private.me() and gather_private.can_add_gallery(event_id, gallery));
 create policy media_delete on public.media for delete to authenticated
-  using (user_id = public.me() or public.my_role(event_id) = 'owner' or public.can(event_id, 'manageTeams'));
+  using (user_id = gather_private.me() or gather_private.my_role(event_id) = 'owner' or gather_private.can(event_id, 'manageTeams'));
 
 -- announcements: event-wide posts for everyone; internal and team posts for organisers.
 create policy announcements_read on public.announcements for select to authenticated
-  using ((scope = 'event' and public.is_member(event_id))
-      or (scope = 'internal' and public.can(event_id, 'viewInternal'))
-      or (scope = 'team' and public.can(event_id, 'viewInternal') and (public.can(event_id, 'manageTeams') or public.in_committee(committee_id))));
+  using ((scope = 'event' and gather_private.is_member(event_id))
+      or (scope = 'internal' and gather_private.can(event_id, 'viewInternal'))
+      or (scope = 'team' and gather_private.can(event_id, 'viewInternal') and (gather_private.can(event_id, 'manageTeams') or gather_private.in_committee(committee_id))));
 create policy announcements_add on public.announcements for insert to authenticated
-  with check (user_id = public.me() and (
-       (scope = 'event' and public.can(event_id, 'postAnnouncements'))
-    or (scope = 'internal' and public.can(event_id, 'viewInternal') and public.my_role(event_id) in ('owner', 'manager', 'lead', 'member'))
-    or (scope = 'team' and (public.in_committee(committee_id) or public.can(event_id, 'manageTeams')))));
+  with check (user_id = gather_private.me() and (
+       (scope = 'event' and gather_private.can(event_id, 'postAnnouncements'))
+    or (scope = 'internal' and gather_private.can(event_id, 'viewInternal') and gather_private.my_role(event_id) in ('owner', 'manager', 'lead', 'member'))
+    or (scope = 'team' and (gather_private.in_committee(committee_id) or gather_private.can(event_id, 'manageTeams')))));
 -- Anyone who can read a post may comment on it; the trigger below stops them changing anything else.
 create policy announcements_edit on public.announcements for update to authenticated
-  using ((scope = 'event' and public.is_member(event_id))
-      or (scope = 'internal' and public.can(event_id, 'viewInternal'))
-      or (scope = 'team' and public.can(event_id, 'viewInternal') and (public.can(event_id, 'manageTeams') or public.in_committee(committee_id))));
+  using ((scope = 'event' and gather_private.is_member(event_id))
+      or (scope = 'internal' and gather_private.can(event_id, 'viewInternal'))
+      or (scope = 'team' and gather_private.can(event_id, 'viewInternal') and (gather_private.can(event_id, 'manageTeams') or gather_private.in_committee(committee_id))));
 create policy announcements_delete on public.announcements for delete to authenticated
-  using (user_id = public.me() or public.my_role(event_id) = 'owner');
+  using (user_id = gather_private.me() or gather_private.my_role(event_id) = 'owner');
 
 -- files: vendors see only what is shared with them; contracts need viewConfidential.
 create policy files_read on public.files for select to authenticated
-  using ((public.my_role(event_id) = 'vendor' and vendor_shared)
-      or (public.my_role(event_id) <> 'vendor' and public.can(event_id, 'viewFiles') and (not confidential or public.can(event_id, 'viewConfidential'))));
+  using ((gather_private.my_role(event_id) = 'vendor' and vendor_shared)
+      or (gather_private.my_role(event_id) <> 'vendor' and gather_private.can(event_id, 'viewFiles') and (not confidential or gather_private.can(event_id, 'viewConfidential'))));
 create policy files_add on public.files for insert to authenticated
-  with check (public.my_role(event_id) <> 'vendor' and public.can(event_id, 'viewFiles') and (not confidential or public.can(event_id, 'viewConfidential')));
+  with check (gather_private.my_role(event_id) <> 'vendor' and gather_private.can(event_id, 'viewFiles') and (not confidential or gather_private.can(event_id, 'viewConfidential')));
 create policy files_edit on public.files for update to authenticated
-  using (public.my_role(event_id) <> 'vendor' and public.can(event_id, 'viewConfidential'));
+  using (gather_private.my_role(event_id) <> 'vendor' and gather_private.can(event_id, 'viewConfidential'));
 create policy files_delete on public.files for delete to authenticated
-  using (public.my_role(event_id) <> 'vendor' and public.can(event_id, 'viewConfidential'));
+  using (gather_private.my_role(event_id) <> 'vendor' and gather_private.can(event_id, 'viewConfidential'));
 
 -- notifications: only your own. Members may notify other people in the same event.
 create policy notifications_read on public.notifications for select to authenticated
-  using (user_id = public.me());
+  using (user_id = gather_private.me());
 create policy notifications_add on public.notifications for insert to authenticated
-  with check (event_id is not null and public.is_member(event_id) and public.person_in_event(user_id, event_id));
+  with check (event_id is not null and gather_private.is_member(event_id) and gather_private.person_in_event(user_id, event_id));
 create policy notifications_edit on public.notifications for update to authenticated
-  using (user_id = public.me());
+  using (user_id = gather_private.me());
 create policy notifications_delete on public.notifications for delete to authenticated
-  using (user_id = public.me());
+  using (user_id = gather_private.me());
 
 -- activity log
 create policy activity_read on public.activity for select to authenticated
-  using (public.can(event_id, 'viewInternal'));
+  using (gather_private.can(event_id, 'viewInternal'));
 create policy activity_add on public.activity for insert to authenticated
-  with check (user_id = public.me() and public.is_member(event_id));
+  with check (user_id = gather_private.me() and gather_private.is_member(event_id));
 
 -- ---------------------------------------------------------------------------------------------
 -- Field guards: some people may change only part of a row.
@@ -520,7 +525,7 @@ language plpgsql set search_path = public as $$
 begin
   -- Only requests from the app are limited; the trusted functions below run as the database owner.
   if current_user not in ('authenticated', 'anon') then return new; end if;
-  if public.can(old.event_id, 'manageTasks') or public.leads_committee(old.committee_id) then return new; end if;
+  if gather_private.can(old.event_id, 'manageTasks') or gather_private.leads_committee(old.committee_id) then return new; end if;
   if (new.event_id, new.title, new.description, new.committee_id, new.assignee_id, new.due, new.priority, new.depends_on)
      is distinct from (old.event_id, old.title, old.description, old.committee_id, old.assignee_id, old.due, old.priority, old.depends_on) then
     raise exception 'You can update progress on this task, but only organisers and the team lead can change its details.' using errcode = '42501';
@@ -535,7 +540,7 @@ language plpgsql set search_path = public as $$
 begin
   -- Only requests from the app are limited; the trusted functions below run as the database owner.
   if current_user not in ('authenticated', 'anon') then return new; end if;
-  if public.can(old.event_id, 'manageGuests') then return new; end if;
+  if gather_private.can(old.event_id, 'manageGuests') then return new; end if;
   if (new.event_id, new.user_id, new.name, new.email, new.guest_group, new.plus_one_allowed, new.reminders, new.checked_in)
      is distinct from (old.event_id, old.user_id, old.name, old.email, old.guest_group, old.plus_one_allowed, old.reminders, old.checked_in) then
     raise exception 'Guests can change only their own reply.' using errcode = '42501';
@@ -550,7 +555,7 @@ language plpgsql set search_path = public as $$
 begin
   -- Only requests from the app are limited; the trusted functions below run as the database owner.
   if current_user not in ('authenticated', 'anon') then return new; end if;
-  if old.user_id = public.me() or public.my_role(old.event_id) = 'owner' then return new; end if;
+  if old.user_id = gather_private.me() or gather_private.my_role(old.event_id) = 'owner' then return new; end if;
   if (new.event_id, new.scope, new.committee_id, new.user_id, new.text, new.media_id)
      is distinct from (old.event_id, old.scope, old.committee_id, old.user_id, old.text, old.media_id) then
     raise exception 'You can comment on this post but not edit it.' using errcode = '42501';
@@ -565,7 +570,7 @@ language plpgsql set search_path = public as $$
 begin
   -- Only requests from the app are limited; the trusted functions below run as the database owner.
   if current_user not in ('authenticated', 'anon') then return new; end if;
-  if public.can(old.event_id, 'manageSchedule') then return new; end if;
+  if gather_private.can(old.event_id, 'manageSchedule') then return new; end if;
   if (new.event_id, new.date, new.start_time, new.end_time, new.title, new.location, new.owner_id, new.description, new.reminder)
      is distinct from (old.event_id, old.date, old.start_time, old.end_time, old.title, old.location, old.owner_id, old.description, old.reminder) then
     raise exception 'You can tick off this activity''s checklist but not change it.' using errcode = '42501';
@@ -581,7 +586,7 @@ language plpgsql set search_path = public as $$
 begin
   -- Only requests from the app are limited; the trusted functions below run as the database owner.
   if current_user not in ('authenticated', 'anon') then return new; end if;
-  if old.role = 'owner' and new.role <> 'owner' and coalesce(public.my_role(old.event_id), '') <> 'owner' then
+  if old.role = 'owner' and new.role <> 'owner' and coalesce(gather_private.my_role(old.event_id), '') <> 'owner' then
     raise exception 'Only an owner can change an owner''s role.' using errcode = '42501';
   end if;
   return new;
@@ -652,12 +657,12 @@ end $$;
 -- What someone opening an invitation link may see before they are part of the event.
 create or replace function public.invite_preview(eid text) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
-declare ev events; me_id text := public.me();
+declare ev events; me_id text := gather_private.me();
 begin
   if auth.uid() is null then return null; end if;
   select * into ev from events where id = eid;
   if not found then return null; end if;
-  if ev.privacy = 'private' and not public.is_member(eid)
+  if ev.privacy = 'private' and not gather_private.is_member(eid)
      and not exists (select 1 from invitations where event_id = eid and user_id = me_id) then
     return jsonb_build_object('id', ev.id, 'private', true);
   end if;
@@ -673,14 +678,14 @@ end $$;
 -- RSVP from an invitation link. Joins the event as a guest if needed.
 create or replace function public.respond_to_invite(eid text, p_rsvp jsonb) returns void
 language plpgsql security definer set search_path = public as $$
-declare ev events; me_id text := public.me(); inv invitations; who people; status text := p_rsvp ->> 'status';
+declare ev events; me_id text := gather_private.me(); inv invitations; who people; status text := p_rsvp ->> 'status';
 begin
   if me_id is null then raise exception 'Sign in first.' using errcode = '42501'; end if;
   if status is not null and status not in ('going', 'maybe', 'declined', 'pending') then raise exception 'Unknown reply.'; end if;
   select * into ev from events where id = eid;
   if not found then raise exception 'This event no longer exists.'; end if;
   select * into inv from invitations where event_id = eid and user_id = me_id limit 1;
-  if not found and ev.privacy = 'private' and not public.is_member(eid) then
+  if not found and ev.privacy = 'private' and not gather_private.is_member(eid) then
     raise exception 'This event is invite only. Ask the host to invite you.' using errcode = '42501';
   end if;
   select * into who from people where id = me_id;
@@ -711,7 +716,7 @@ end $$;
 -- with the caller as owner; rows may only point at events and people that are in the same payload.
 create or replace function public.import_events(payload jsonb) returns integer
 language plpgsql security definer set search_path = public as $$
-declare me_id text := public.me(); ev_ids text[]; people_ids text[]; com_ids text[];
+declare me_id text := gather_private.me(); ev_ids text[]; people_ids text[]; com_ids text[];
 begin
   if me_id is null then raise exception 'Sign in first.' using errcode = '42501'; end if;
   select coalesce(array_agg(x ->> 'id'), '{}') into ev_ids from jsonb_array_elements(payload -> 'events') x;
@@ -759,6 +764,8 @@ begin
   return cardinality(ev_ids);
 end $$;
 
+revoke all on all functions in schema gather_private from public, anon;
+grant execute on all functions in schema gather_private to authenticated;
 revoke all on function public.ensure_me(text), public.invite_preview(text), public.respond_to_invite(text, jsonb), public.import_events(jsonb) from public, anon;
 grant execute on function public.ensure_me(text), public.invite_preview(text), public.respond_to_invite(text, jsonb), public.import_events(jsonb) to authenticated;
 
@@ -772,8 +779,8 @@ drop policy if exists gather_media_read on storage.objects;
 drop policy if exists gather_media_add on storage.objects;
 drop policy if exists gather_media_delete on storage.objects;
 create policy gather_media_read on storage.objects for select to authenticated
-  using (bucket_id = 'media' and public.can_view_gallery((storage.foldername(name))[1], (storage.foldername(name))[2]));
+  using (bucket_id = 'media' and gather_private.can_view_gallery((storage.foldername(name))[1], (storage.foldername(name))[2]));
 create policy gather_media_add on storage.objects for insert to authenticated
-  with check (bucket_id = 'media' and public.can_add_gallery((storage.foldername(name))[1], (storage.foldername(name))[2]));
+  with check (bucket_id = 'media' and gather_private.can_add_gallery((storage.foldername(name))[1], (storage.foldername(name))[2]));
 create policy gather_media_delete on storage.objects for delete to authenticated
-  using (bucket_id = 'media' and (owner = auth.uid() or public.my_role((storage.foldername(name))[1]) = 'owner'));
+  using (bucket_id = 'media' and (owner = auth.uid() or gather_private.my_role((storage.foldername(name))[1]) = 'owner'));

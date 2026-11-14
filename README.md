@@ -82,7 +82,8 @@ Gather runs in two modes:
 
 1. In the Supabase dashboard open **SQL Editor**, paste the whole of `supabase/schema.sql` and run it.
    It creates the tables, the security rules, a private `media` bucket for photos, and the functions the
-   app calls. It is safe to run again after updates.
+   app calls. It is safe to run again after updates. A database set up with an earlier version can
+   instead run the files in `supabase/migrations/` that it has not run yet.
 2. Put the project's **anon (public)** or **publishable** key in `src/backend-config.js`
    (Project Settings → API Keys). Never use the `service_role` or secret key in the app.
 3. Host the site (see below), then in Supabase go to **Authentication → URL Configuration** and set the

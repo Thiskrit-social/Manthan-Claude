@@ -20,7 +20,7 @@ def run(who, sql, a=None, fetch=True):
     except Exception as e:
         conn.rollback(); return ('ERR', str(e).split('\n')[0])
 def err(r): return isinstance(r, tuple) and r[0] == 'ERR'
-def pid(who): return run(who, "select (ensure_me(%s)).id", (who.title(),))[0][0]
+def pid(who): return run(who, "select (public.ensure_me(%s)).id", (who.title(),))[0][0]
 
 ids = {n: pid(n) for n in ['alice', 'bob', 'carl', 'dana', 'erin', 'vic', 'zed']}
 ok(all(ids.values()) and len(set(ids.values())) == 7, 'ensure_me creates one profile per account')
@@ -116,13 +116,13 @@ ok(run('alice', "select count(*) from notifications where text like '%%Zed repli
 run('alice', "insert into people (id,name,email,created_by) values ('pPat','Pat','PAT@x.com',%s)", (ids['alice'],))
 run('alice', "insert into memberships values ('mPat',%s,'pPat','member')", (E,)); run('alice', "insert into tasks (id,event_id,title,assignee_id) values ('t9',%s,'Pat job','pPat')", (E,))
 pat = pid('pat'); ok(pat == 'pPat', 'signing up with an invited email claims the placeholder profile')
-ok(run('pat', "select title from tasks where assignee_id = me()") == [('Pat job',)] and run('pat', "select my_role(%s)", (E,))[0][0] == 'member', 'their role and tasks are waiting for them')
+ok(run('pat', "select title from tasks where assignee_id = gather_private.me()") == [('Pat job',)] and run('pat', "select gather_private.my_role(%s)", (E,))[0][0] == 'member', 'their role and tasks are waiting for them')
 run('alice', "insert into people (id,name,email,created_by) values ('pBob2','Bob again','bob@x.com',%s)", (ids['alice'],)); run('alice', "insert into memberships values ('mB2','evP','pBob2','guest')")
 run('alice', "insert into invitations (id,event_id,user_id,name,email) values ('iB2','evP','pBob2','Bob again','bob@x.com')")
-pid('bob'); ok(run('bob', "select my_role('evP')")[0][0] == 'guest' and run('admin' if False else 'alice', "select count(*) from people where id='pBob2'")[0][0] == 0, 'an existing account picks up a later email invitation on next sign-in')
+pid('bob'); ok(run('bob', "select gather_private.my_role('evP')")[0][0] == 'guest' and run('admin' if False else 'alice', "select count(*) from people where id='pBob2'")[0][0] == 0, 'an existing account picks up a later email invitation on next sign-in')
 run('alice', "insert into invitations (id,event_id,user_id,name,email) values ('iQ','evP',null,'Quinn','quinn@x.com')")
-pid('quinn'); ok(run('quinn', "select my_role('evP')")[0][0] == 'guest' and run('quinn', "select count(*) from invitations")[0][0] == 1, 'an email-only invitation is claimed at sign-up')
-ok(err(run('zed', "update people set auth_user_id = null where id = me()")), 'nobody can unlink an account from the app')
+pid('quinn'); ok(run('quinn', "select gather_private.my_role('evP')")[0][0] == 'guest' and run('quinn', "select count(*) from invitations")[0][0] == 1, 'an email-only invitation is claimed at sign-up')
+ok(err(run('zed', "update people set auth_user_id = null where id = gather_private.me()")), 'nobody can unlink an account from the app')
 ok(run('zed', "update people set name='Hijack' where id=%s", (ids['alice'],)) == 0, 'cannot rename another account')
 # --- import ---
 good = {'people': [{'id': 'pS1', 'name': 'Sample Sam', 'email': '', 'tone': 'lav', 'bio': '', 'created_at': '2026-01-01T00:00:00Z'}],
@@ -130,7 +130,7 @@ good = {'people': [{'id': 'pS1', 'name': 'Sample Sam', 'email': '', 'tone': 'lav
         'memberships': [{'id': 'mS1', 'event_id': 'evS', 'user_id': 'pS1', 'role': 'owner'}],
         'announcements': [{'id': 'aS1', 'event_id': 'evS', 'scope': 'event', 'user_id': 'pS1', 'text': 'From sample', 'at': '2026-01-01T00:00:00Z', 'comments': [], 'committee_id': None, 'media_id': None}]}
 r = run('zed', "select import_events(%s)", (J(good),)); ok(r == [(1,)], 'import adds sample events: %s' % (r,))
-ok(run('zed', "select my_role('evS')")[0][0] == 'owner' and run('zed', "select role from memberships where user_id='pS1'") == [('manager',)], 'the importer becomes owner; sample owners become managers')
+ok(run('zed', "select gather_private.my_role('evS')")[0][0] == 'owner' and run('zed', "select role from memberships where user_id='pS1'") == [('manager',)], 'the importer becomes owner; sample owners become managers')
 bad = json.loads(J(good)); bad['events'][0]['id'] = 'evS2'; bad['people'] = []; bad['memberships'] = []; bad['announcements'] = [{'id': 'aS2', 'event_id': E, 'scope': 'event', 'user_id': ids['zed'], 'text': 'Injected'}]
 ok(err(run('zed', "select import_events(%s)", (J(bad),))), 'import refuses rows that point at someone else’s event')
 bad2 = json.loads(J(good)); bad2['events'][0]['id'] = 'evS3'; bad2['people'] = []; bad2['memberships'] = []; bad2['announcements'] = [{'id': 'aS3', 'event_id': 'evS3', 'scope': 'event', 'user_id': ids['alice'], 'text': 'Pretending'}]
