@@ -6,5 +6,5 @@
 // While anonKey is empty the app runs as a local demo with no backend.
 export const BACKEND = {
   url: 'https://bqofayrgxygsigbdugzu.supabase.co',
-  anonKey: '',
+  anonKey: 'sb_publishable_Q_qdt_c-MeE9mIjvxbky_A_8GOQo0K0',
 };
