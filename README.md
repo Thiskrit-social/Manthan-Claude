@@ -69,19 +69,88 @@ prototype: a production build should make these calls from a backend so no key r
 `src/ai.js` is the provider layer (`askJSON`). `src/planner.js` holds the rule-based `draftPlan` and
 `suggestions`, and the model-backed `draftPlanAI` and `askCopilot`.
 
+## Backend (Supabase)
+
+Gather runs in two modes:
+
+- **Demo** (no backend): sample data in this browser, with a persona switcher. This is what you get while
+  `src/backend-config.js` has no key.
+- **Cloud**: real accounts and shared data in a Supabase project. People sign up with email and password,
+  and each person sees the events they belong to, according to their role.
+
+### Setting it up
+
+1. In the Supabase dashboard open **SQL Editor**, paste the whole of `supabase/schema.sql` and run it.
+   It creates the tables, the security rules, a private `media` bucket for photos, and the functions the
+   app calls. It is safe to run again after updates.
+2. Put the project's **anon (public)** or **publishable** key in `src/backend-config.js`
+   (Project Settings → API Keys). Never use the `service_role` or secret key in the app.
+3. Host the site (see below), then in Supabase go to **Authentication → URL Configuration** and set the
+   **Site URL** to your site's address, so confirmation and password-reset emails link back to it.
+4. Optional: Supabase's built-in email sender is rate-limited. For more than a handful of sign-ups a day,
+   add your own SMTP provider under **Authentication → Emails**, or turn off "Confirm email" while testing.
+
+A copy without a key in the file can also be connected from **Profile → Connect a backend**; that setting
+is stored in the visitor's browser only.
+
+### How the app talks to it
+
+The screens still read and change the same in-memory store as in the demo. In cloud mode,
+`src/backend.js` loads everything the signed-in person is allowed to see, and after each change sends
+only the rows that were added, changed or removed. If the database refuses a change, the app says so
+and reloads the saved version. It also refreshes every 30 seconds and when the window regains focus, so
+people see each other's changes.
+
+Who can see and change what is enforced by row-level security in `supabase/schema.sql`, using each event's
+own role and permission matrix. Budgets live in separate tables so guests never receive them; guests can
+change only their own RSVP; assignees can update progress but not task details; vendors see only what
+is shared with them; photos are in a private bucket with the same gallery rules.
+
+Invitations: adding a guest with an email address means that when they sign up (or next sign in) with
+that address, the event is waiting for them. Invitation links (`#invite-<event id>`) let anyone signed in
+RSVP to events set to "Anyone with the link". No emails are sent by the app yet.
+
+### Testing the database rules
+
+`supabase/tests/rls_test.py` signs in as an owner, manager, team lead, member, guest, vendor and an
+outsider and checks 79 rules against a local Postgres. To run it (PostgreSQL 16 and `psycopg2`):
+
+```bash
+createdb gather && psql -d gather -f supabase/tests/supabase_stub.sql && psql -d gather -f supabase/schema.sql
+node -e "import('./src/config.js').then(c=>console.log(JSON.stringify({organised:c.defaultPermissions('organised'),simple:c.defaultPermissions('simple')})))" > /tmp/perms.json
+python3 supabase/tests/rls_test.py /tmp/perms.json
+```
+
+(`supabase_stub.sql` starts with `drop database`/`create database gather`; skip those two lines if you
+created the database yourself.)
+
+## Hosting
+
+Supabase is the backend only; the site itself is static files and needs a static host. Free options that
+deploy from a private GitHub repository: Netlify, Vercel or Cloudflare Pages. Import this repository, leave
+the build command empty and publish the repository root (`netlify.toml` already says so). Any push to
+`main` then redeploys.
+
+The claude.ai preview links cannot reach Supabase (their sandbox blocks outside connections), so they
+always run the demo.
+
 ## What is real and what is simulated
 
-Works for real, in this browser only: all state changes (saved to `localStorage`), photo upload
-(downscaled and stored locally), the device camera where the browser grants access, copy-link.
+In cloud mode, real: accounts, shared data across people and devices, roles and permissions enforced by
+the database, invitation links, photo upload to private storage, the device camera where the browser
+grants access, copy-link.
 
-Simulated and labelled as such in the UI: the planner when no AI model is connected (it uses built-in rules), sign-in, emails and reminders, file uploads (name and
-size only), video storage, the camera when no device camera is available, cross-device sync.
-There is no backend.
+In demo mode, everything is saved in this browser only and sign-in is a persona switcher.
+
+Simulated and labelled as such in the UI, in both modes: emails and reminders (people see them in the
+app's notifications instead), document uploads (name and size only), video storage, the camera when no
+device camera is available, and the planner when no AI model is connected (it uses built-in rules).
 
 ## Architecture
 
 ```
 index.html        entry point
+supabase/         schema.sql (tables, security rules, storage, functions) and tests/
 phone.html        phone prototype: the same app in a device frame
 styles.css        design tokens (light + dark) and components
 vendor/           Preact + htm (MIT), vendored so nothing is fetched or built
@@ -89,6 +158,8 @@ src/
   config.js       brand, categories, complexity presets, roles, capabilities, default permissions
   seed.js         sample data (plain records; app logic never refers to a sample event by id)
   store.js        normalised state, selectors and every mutation ("actions")
+  backend.js      cloud mode: Supabase sign-in, loading, and syncing changes
+  backend-config.js  your Supabase project URL and public key
   permissions.js  role and capability checks, scoped per event
   ai.js           model providers for the planner (Claude, on-device, Gemini, Groq, OpenRouter)
   planner.js      planner engine: built-in rules plus the model-backed plan and co-pilot

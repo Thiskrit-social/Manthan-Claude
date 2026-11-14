@@ -1,4 +1,4 @@
-// Local prototype state: one normalised store, persisted to localStorage.
+// App state: one normalised store. The demo persists it to localStorage; cloud mode syncs it to Supabase (backend.js).
 // Collections mirror the conceptual entities (User, Event, EventMembership, Invitation+RSVP,
 // Committee, CommitteeMembership, Task, ScheduleItem, Expense, Media, Announcement, File, Notification).
 // Views never mutate state directly; they call the actions below, which is the seam a real API would replace.
@@ -18,9 +18,17 @@ function save() {
   }
 }
 if (!state) { state = seed(); save(); }
+// Where changes go. The demo saves to this browser; cloud mode (backend.js) swaps in a saver that writes to Supabase.
+let persist = save; let cloud = false;
+export const isCloud = () => cloud;
+// Hooks the cloud backend fills in for actions that need the server (joining an event from a link).
+export const hooks = { joinViaInvite: null };
+export function attachCloud(next, saver) { state = next; persist = saver; cloud = true; subs.forEach((f) => f()); }
+// Replaces everything with a fresh copy from the server without saving it back.
+export function replaceState(next) { state = next; subs.forEach((f) => f()); }
 export const S = () => state;
 export const subscribe = (fn) => { subs.add(fn); return () => subs.delete(fn); };
-function mutate(fn) { const r = fn(state); state.rev = (state.rev || 0) + 1; save(); subs.forEach((f) => f()); return r; }
+function mutate(fn) { const r = fn(state); state.rev = (state.rev || 0) + 1; persist(state); subs.forEach((f) => f()); return r; }
 export function resetDemo() { state = seed(); save(); subs.forEach((f) => f()); }
 const now = () => new Date().toISOString();
 
@@ -90,7 +98,7 @@ export const ensureUser = (name, email = '') => mutate((s) => {
   const found = Object.values(s.users).find((u) => u.name.toLowerCase() === name.trim().toLowerCase());
   if (found) return found.id;
   const id = uid('u'); const tones = ['lav', 'butter', 'coral', 'mint', 'sky'];
-  s.users[id] = { id, name: name.trim(), email, tone: tones[Object.keys(s.users).length % 5] }; return id;
+  s.users[id] = { id, name: name.trim(), email, tone: tones[Object.keys(s.users).length % 5], bio: '', createdBy: s.currentUserId }; return id;
 });
 
 export const createEvent = (d, withTeams) => mutate((s) => {
@@ -143,6 +151,7 @@ export const setRsvp = (id, patch) => mutate((s) => {
 });
 // A person opening the invitation link: make sure they have an invitation, then record the RSVP.
 export const respondToInvite = (eventId, patch) => {
+  if (cloud && hooks.joinViaInvite && !invitationFor(eventId)) return hooks.joinViaInvite(eventId, patch);
   let inv = invitationFor(eventId);
   if (!inv) { const id = addGuest(eventId, { userId: meId(), plusOneAllowed: has(eventById(eventId), 'plusOnes'), group: 'Via link' }); inv = S().invitations.find((i) => i.id === id); }
   setRsvp(inv.id, patch);

@@ -1,4 +1,5 @@
-export const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9);
+// Ids are global keys in the shared database, so they need to be long enough not to collide.
+export const uid = (p = 'x') => { const b = new Uint8Array(9); crypto.getRandomValues(b); return p + Array.from(b, (n) => (n % 36).toString(36)).join(''); };
 export const cx = (...a) => a.filter(Boolean).join(' ');
 const pad = (n) => String(n).padStart(2, '0');
 export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

@@ -1,12 +1,21 @@
 // Personal screens: dashboard, My Events, My Tasks, notifications, profile and the invitation page.
-import { html, useState } from '../lib.js';
+import { html, useState, useEffect } from '../lib.js';
 import { BRAND, ROLES, COMPLEXITY, PRIVACY, by } from '../config.js';
-import { me, meId, user, eventsFor, tasksFor, notificationsFor, invitationFor, eventById, roleIn, rsvpStats, S, activityOf, markRead, markAllRead, resetDemo, respondToInvite, myTeams, tasksOf, progress, membersOf, scheduleOf } from '../store.js';
+import { me, meId, user, eventsFor, tasksFor, notificationsFor, invitationFor, eventById, roleIn, rsvpStats, S, activityOf, markRead, markAllRead, resetDemo, respondToInvite, isCloud, myTeams, tasksOf, progress, membersOf, scheduleOf } from '../store.js';
 import { visibleTasks } from '../permissions.js';
 import { go, Icon, Avatar, Pill, RolePill, Bar, Cover, When, Empty, Sim, Confirm, toast, Seg } from '../ui.js';
 import { cx, greeting, fmtDate, fmtLong, fmtTime, daysUntil, dueLabel, ago, today, addDays } from '../utils.js';
 import { TaskRow, TaskModal } from './tasks.js';
 import { RsvpCard } from './people.js';
+import { importSamples, signOut, setMode, cloudConfig, invitePreview } from '../backend.js';
+import { ConnectBackend } from './auth.js';
+
+// Offered to a signed-in person with no events yet, and on their profile.
+function SamplesButton({ label = 'Add the two sample events' }) {
+  const [busy, setBusy] = useState(false);
+  return html`<button class="btn" disabled=${busy} onClick=${async () => { setBusy(true); try { await importSamples(); toast('Sample events added to your account'); } catch (e) { toast('Couldn’t add the samples: ' + e.message); } setBusy(false); }}>
+    <${Icon} name="sparkle" />${busy ? 'Adding…' : label}</button>`;
+}
 
 const inDays = (ev) => { const n = daysUntil(ev.date); return n < 0 ? 'Past' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`; };
 const pendingInvites = () => eventsFor().filter(({ event, role }) => role === 'guest' && invitationFor(event.id)?.rsvp.status === 'pending');
@@ -48,7 +57,7 @@ export function Home() {
       <div style="width:84px;flex:none"><${Cover} ev=${e} size="sm" /></div><div class="col grow" style="gap:2px;min-width:150px"><h3>${e.name}</h3><span class="small muted"><${When} ev=${e} /></span><span class="small muted">Hosted by ${user(e.createdBy).name}</span></div>
       <div class="row wrap"><button class="btn primary sm" onClick=${() => { respondToInvite(e.id, { status: 'going' }); toast('You’re going! 🎉'); }}>Accept</button><button class="btn sm" onClick=${() => { respondToInvite(e.id, { status: 'maybe' }); toast('Marked as maybe'); }}>Maybe</button><button class="btn sm" onClick=${() => { respondToInvite(e.id, { status: 'declined' }); toast('Declined'); }}>Decline</button><button class="btn ghost sm" onClick=${() => go(`invite-${e.id}`)}>View</button></div></div>`)}</div></div>`}
     <div class="col"><div class="sec-head"><h2>Upcoming events</h2><button class="btn ghost sm" onClick=${() => go('events')}>See all<${Icon} name="right" size=${14} /></button></div>
-      ${mine.length ? html`<div class="hscroll">${mine.map((x) => html`<${EventCard} key=${x.event.id} ...${x} />`)}</div>` : html`<div class="card"><${Empty} emoji="🎈" title="No events yet">Create your first event. It takes about a minute.<//></div>`}</div>
+      ${mine.length ? html`<div class="hscroll">${mine.map((x) => html`<${EventCard} key=${x.event.id} ...${x} />`)}</div>` : html`<div class="card"><${Empty} emoji="🎈" title="No events yet">Create your first event. It takes about a minute.${isCloud() && html`<div class="row wrap" style="justify-content:center;margin-top:10px"><button class="btn primary" onClick=${() => go('new')}><${Icon} name="plus" />Create event</button><${SamplesButton} label="Or explore the sample events" /></div>`}<//></div>`}</div>
     <div class="split">
       <div class="col gap-l">
         <div class="card col"><div class="row between"><h3>Tasks assigned to me</h3><button class="btn ghost sm" onClick=${() => go('mytasks')}>All ${tasks.length}<${Icon} name="right" size=${14} /></button></div>
@@ -102,21 +111,30 @@ export function Profile({ onSwitch }) {
   const u = me(); const mine = eventsFor();
   return html`<div class="sec-head"><h1>Profile</h1></div>
     <div class="card row wrap"><${Avatar} id=${u.id} size="xl" /><div class="col grow" style="gap:2px;min-width:200px"><h2>${u.name}</h2><span class="muted">${u.email}</span>${u.bio && html`<span class="small">${u.bio}</span>`}</div>
-      <button class="btn primary" onClick=${onSwitch}><${Icon} name="swap" />Switch demo persona</button></div>
+      ${isCloud() ? html`<button class="btn" onClick=${async () => { await signOut(); location.hash = 'home'; location.reload(); }}><${Icon} name="left" />Sign out</button>`
+        : html`<button class="btn primary" onClick=${onSwitch}><${Icon} name="swap" />Switch demo persona</button>`}</div>
     <div class="card col"><h3>Your roles</h3><p class="small muted">One account, a different role in each event.</p>
       <div class="list">${mine.map(({ event: e, role }) => html`<button class="row wrap" style="text-align:left" key=${e.id} onClick=${() => go(`e-${e.id}-overview`)}><span class=${'avatar c-' + e.cover.tone} style="border-radius:10px">${e.cover.emoji}</span>
         <span class="col grow" style="gap:0;min-width:160px"><b>${e.name}</b><span class="tiny muted">${fmtDate(e.date)} · ${myTeams(e.id).map((c) => c.icon + ' ' + c.name).join(', ') || ROLES[role].blurb}</span></span><${RolePill} role=${role} /></button>`)}</div>
       ${!mine.length && html`<span class="small muted">You are not part of any event yet.</span>`}</div>
-    <div class="card col"><h3>About this prototype</h3><p class="small muted">${BRAND.name} is an interactive prototype. Your changes are saved in this browser only. Emails, invitations, file uploads and reminders are imitated and marked <${Sim} />. Photos you add stay on this device.</p>
-      <div><${Confirm} label="Reset demo data" small=${false} onConfirm=${() => { resetDemo(); go('home'); toast('Demo data restored'); }} /></div></div>`;
+    ${isCloud() ? html`<div class="card col"><h3>Your account</h3><p class="small muted">Signed in. Your events, guests, tasks and photos are saved to your ${BRAND.name} account and shared with the people in each event, according to their role. Invitation emails and reminders are not sent yet: people see them in the app. <${Sim}>No email<//></p>
+        <div class="row wrap"><${SamplesButton} /></div></div>`
+      : html`<div class="card col"><h3>About this demo</h3><p class="small muted">You are using local sample data. Your changes are saved in this browser only. Emails, invitations, file uploads and reminders are imitated and marked <${Sim} />. Photos you add stay on this device.</p>
+        <div class="row wrap"><${Confirm} label="Reset demo data" small=${false} onConfirm=${() => { resetDemo(); go('home'); toast('Demo data restored'); }} />
+          ${cloudConfig() && html`<button class="btn primary" onClick=${() => { setMode('cloud'); location.hash = 'home'; location.reload(); }}>Sign in to save for real</button>`}</div></div>
+        ${!cloudConfig() && html`<div class="card col"><h3>Connect a backend</h3><p class="small muted">Point this copy at a Supabase project (with <code>supabase/schema.sql</code> applied) to get real accounts and shared data.</p><${ConnectBackend} /></div>`}`}`;
 }
 
 export function Invite({ eventId }) {
-  const ev = eventById(eventId);
+  const known = eventById(eventId); const [preview, setPreview] = useState(undefined);
+  useEffect(() => { if (!known && isCloud()) invitePreview(eventId).then((p) => setPreview(p || null)).catch(() => setPreview(null)); }, [eventId, !!known]);
+  if (!known && isCloud() && preview === undefined) return html`<div class="card"><${Empty} emoji="💌" title="Opening the invitation…"><//></div>`;
+  if (!known && preview?.private) return html`<div class="card"><${Empty} emoji="🔒" title="This event is invite only">Ask the host to add your email address, then sign in again.<//></div>`;
+  const ev = known || (preview && { ...preview, cover: preview.cover?.tone ? preview.cover : { tone: 'lav', emoji: '🎉' }, features: preview.features || [] });
   if (!ev) return html`<div class="card"><${Empty} emoji="💌" title="This invitation is no longer available">The event may have been deleted.<//></div>`;
-  const role = roleIn(eventId); const st = rsvpStats(eventId); const inv = invitationFor(eventId); const host = user(ev.createdBy);
+  const role = roleIn(eventId); const st = known ? rsvpStats(eventId) : { going: ev.going || 0, maybe: ev.maybe || 0 }; const inv = invitationFor(eventId); const host = known ? user(ev.createdBy) : { name: ev.hostName || 'The host' };
   return html`<div class="col gap-l" style="max-width:640px;margin:0 auto;width:100%">
-    <div class="row between wrap"><span class="eyebrow">Invitation</span><${Sim}>Link preview, viewed as ${me().name.split(' ')[0]}<//></div>
+    <div class="row between wrap"><span class="eyebrow">Invitation</span>${!isCloud() && html`<${Sim}>Link preview, viewed as ${me().name.split(' ')[0]}<//>`}</div>
     <div class="card col gap-l" style="padding:12px 12px 22px"><${Cover} ev=${ev} size="hero" />
       <div class="col" style="padding:0 10px;text-align:center;align-items:center"><span class="small muted">${host.name} invites you to</span><h1>${ev.name}</h1>
         <div class="row wrap" style="justify-content:center"><${Pill} tone="lav"><${Icon} name="calendar" size=${13} />${fmtLong(ev.date)}<//><${Pill} tone="butter"><${Icon} name="clock" size=${13} />${fmtTime(ev.start)}${ev.end ? '–' + fmtTime(ev.end) : ''}<//></div>
