@@ -190,4 +190,38 @@ ok(count("select count(*) from events where id = 'evBob'") == 0 and count("selec
 ok(count("select count(*) from memberships where user_id = %s", (bob_id,)) == 0 and count("select count(*) from events where id = 'evP'") == 1, 'they leave other events, which stay')
 ok(count("select count(*) from tasks where id = 'tDel' and assignee_id is null") == 1, 'tasks they held in other events stay, unassigned')
 ok(count("select count(*) from people where id = %s", (alice_id,)) == 1, 'nobody else is affected')
+def admin_one(sql, a=None):
+    with conn.cursor() as c: c.execute(sql, a); v = c.fetchone()[0]; conn.commit(); return v
+
+# --- replying from a personal link, without an account ---
+def anon(sql, a=None):
+    try:
+        with conn.cursor() as c:
+            c.execute("set local role anon; select set_config('request.jwt.claim.sub', '', true)")
+            c.execute(sql, a); out = c.fetchall() if c.description else c.rowcount
+        conn.commit(); return out
+    except Exception as e:
+        conn.rollback(); return ('ERR', str(e).split('\n')[0])
+admin("update events set features = '[\"plusOnes\"]' where id = 'evP'")
+admin("insert into invitations (id,event_id,name,phone,plus_one_allowed) values ('iAnon','evP','Nina Phone','+447700900000',true),('iAnon2','evP','Omar','',false)")
+tokN = run('alice', "select invite_link('iAnon')")[0][0]; tokO = run('alice', "select invite_link('iAnon2')")[0][0]
+g = anon("select guest_invite('evP', %s)", (tokN,))[0][0]
+ok(g['name'] == 'Private dinner' and g['guest']['name'] == 'Nina Phone' and g['guest']['plusOneAllowed'] is True and g['hostName'] == 'Alice', 'a personal link shows a private event and the guest’s own invitation without signing in')
+ok('email' not in json.dumps(g) and 'phone' not in json.dumps(g), 'the page reveals no contact details')
+ok(anon("select guest_invite('evP', null)")[0][0] == {'id': 'evP', 'private': True} and anon("select guest_invite('evP', 'nottherighttoken12345')")[0][0] == {'id': 'evP', 'private': True}, 'without a valid link an invite-only event shows nothing')
+ok(anon("select guest_invite('evP', %s)", (tokO,))[0][0]['guest']['name'] == 'Omar' and err(anon("select guest_rsvp('evE', %s, '{\"status\":\"going\"}')", (tokN,))), 'a link only opens its own event')
+r = anon("select guest_rsvp('evP', %s, %s)", (tokN, json.dumps({'status': 'going', 'plusOne': True, 'plusOneName': 'Sam', 'dietary': 'vegan', 'arrival': '19:30', 'message': 'x' * 5000})))
+ok(not err(r) and r[0][0]['status'] == 'going' and r[0][0]['plusOneName'] == 'Sam' and len(r[0][0]['message']) == 1000, 'a guest replies from the link without an account; long text is trimmed')
+ok(admin_one("select rsvp->>'status' from invitations where id='iAnon'") == 'going' and admin_one("select count(*) from notifications where event_id='evP' and text like 'Nina Phone replied “going”%%'") == 1, 'the reply is saved and the host is told')
+r = anon("select guest_rsvp('evP', %s, '{\"status\":\"going\",\"plusOne\":true,\"plusOneName\":\"Zoe\"}')", (tokO,))
+ok(r[0][0].get('plusOne') is False, 'a plus-one is refused when the host did not allow one')
+ok(err(anon("select guest_rsvp('evP', %s, '{\"status\":\"owner\"}')", (tokN,))) and err(anon("select guest_rsvp('evP', 'nottherighttoken12345', '{\"status\":\"going\"}')")), 'unknown replies and wrong links are refused')
+anon("select guest_rsvp('evP', %s, %s)", (tokN, json.dumps({'status': 'going', 'name': 'Hacked', 'email': 'h@x.com', 'checkedIn': True, 'user_id': 'pX'})))
+ok(admin_one("select name || '|' || email || '|' || checked_in::text || '|' || coalesce(user_id,'-') from invitations where id='iAnon'") == 'Nina Phone||false|-', 'nothing but the reply can be changed from the link')
+anon("select guest_rsvp('evP', %s, '{\"status\":\"declined\"}')", (tokN,))
+ok(admin_one("select (rsvp->>'plusOne') || '|' || (rsvp->>'status') from invitations where id='iAnon'") == 'false|declined', 'the guest can change their answer later from the same link; declining drops the plus-one')
+ok(err(anon("select * from invitations")) or anon("select count(*) from invitations") == [(0,)], 'the link gives no other access to the database')
+admin("update events set privacy = 'link' where id = 'evP'")
+ok(anon("select guest_invite('evP', null)")[0][0]['name'] == 'Private dinner' and anon("select guest_invite('evP', null)")[0][0]['guest'] is None, 'an event open to anyone with the link can be seen without signing in')
+admin("update events set privacy = 'private' where id = 'evP'")
 print('\n%d passed, %d failed' % (sum(results), len(results) - sum(results)))

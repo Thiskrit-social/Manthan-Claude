@@ -292,6 +292,9 @@ export async function startCloud({ name, onError } = {}) {
 export const refresh = () => reload();
 
 /* ---------------- server-side actions ---------------- */
+// Without signing in: a personal link's event page and reply (see supabase/migrations/006).
+export async function guestInvite(eventId, token) { const c = await sb(); return check(await c.rpc('guest_invite', { eid: eventId, p_token: token || null })); }
+export async function guestRsvp(eventId, token, rsvp) { const c = await sb(); return check(await c.rpc('guest_rsvp', { eid: eventId, p_token: token, p_rsvp: rsvp })); }
 export async function invitePreview(eventId, token) { const c = await sb(); return check(await c.rpc('invite_preview', { eid: eventId, p_token: token || null })); }
 // The token in a personal invitation link (#invite-<event>-<token>), if the page was opened from one.
 const linkToken = (eventId) => { const m = location.hash.match(/^#invite-([^-]+)-([A-Za-z0-9]+)$/); return m && m[1] === eventId ? m[2] : null; };

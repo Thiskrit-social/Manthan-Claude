@@ -219,3 +219,9 @@ onto tables or Dart models if the product is rebuilt in Flutter.
 - **Delete account** is on the Profile screen and calls `delete_my_account()` (migration `005_feedback_and_account_deletion.sql`).
 - **Legal pages:** `terms.html` and `privacy.html` are plain-language drafts. Add the operator's name and a contact address, and have them checked, before growing beyond a beta.
 - **Link preview:** `og.png` and the tags in `index.html`. If the site moves to its own domain, update the `og:image` address.
+
+## Replying without an account
+
+A guest's personal link (`#invite-<event>-<token>`) opens the event page directly, with no sign-in. The guest answers Going, Maybe or Can't go, can add arrival time, dietary needs, a plus-one (if the host allows one) and a message, and gets add-to-calendar links. They can reopen the same link to change their answer. The host sees the reply in the guest list and gets a notification.
+
+The database functions `guest_invite` and `guest_rsvp` (migration `006_reply_without_account.sql`) are the only things a token alone can reach: one event, and only the reply fields of that one invitation. An invite-only event opened without a valid token shows nothing. An event open to "anyone with the link" can be viewed without signing in, but replying from the shared (non-personal) link needs an account, so the host knows who answered. If the guest later creates an account from the link, the invitation becomes theirs.

@@ -228,3 +228,4 @@ td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: middl
 .sync i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
 .btn.disabled { opacity: .45; }
 a.btn { text-decoration: none; }
+.center { text-align: center; align-items: center; justify-content: center; }

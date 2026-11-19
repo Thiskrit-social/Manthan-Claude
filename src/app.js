@@ -4,6 +4,7 @@ import { BRAND } from './config.js';
 import { subscribe, me, eventsFor, unreadCount, tasksFor, switchUser, S, isCloud } from './store.js';
 import { cloudConfig, getMode, setMode, session, startCloud, onStatus, syncStatus, authLanding, watchErrors } from './backend.js';
 import { AuthGate, Splash, SetPassword } from './views/auth.js';
+import { GuestInvite } from './views/guest.js';
 import { PERSONAS } from './seed.js';
 import { route, go, Icon, Avatar, Toasts, Modal, Sim, toast } from './ui.js';
 import { cx } from './utils.js';
@@ -85,10 +86,12 @@ function Root() {
     if (!cloudConfig()) return setPhase('demo');
     watchErrors();
     // Someone who is signed in always gets their account, even if this tab was showing the demo.
-    session().then((s) => { if (s) { setMode(null); return enter(); } setPhase(getMode() === 'demo' ? 'demo' : 'auth'); })
+    session().then((s) => { if (s) { setMode(null); return enter(); } setPhase(route().name === 'invite' ? 'guest' : getMode() === 'demo' ? 'demo' : 'auth'); })
       .catch((e) => { if (getMode() === 'demo') return setPhase('demo'); setError(e.message); setPhase('auth'); });
   }, []);
   if (phase === 'boot' || phase === 'loading') return html`<${Splash} text=${phase === 'boot' ? 'Starting…' : 'Loading your events…'} />`;
+  // An invitation link opens straight onto the event for someone who isn't signed in: no account needed.
+  if (phase === 'guest') { const r = route(); return html`<${GuestInvite} eventId=${r.eventId} token=${r.token} onSignIn=${(to) => { if (to) location.hash = to; setPhase('auth'); }} />`; }
   if (phase === 'auth') return html`<${AuthGate} onSignedIn=${enter} error=${error} />`;
   if (phase === 'ready' && newPass) return html`<${SetPassword} onDone=${(saved) => { setNewPass(false); if (saved) toast('Password saved'); }} />`;
   return html`<${App} />`;
