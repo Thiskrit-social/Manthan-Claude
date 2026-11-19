@@ -104,13 +104,14 @@ const OMIT = Symbol('omit');
 const SPECS = [
   { coll: 'users', table: 'people', cols: { id: null, name: '', email: '', tone: 'lav', bio: '', createdBy: null } },
   { coll: 'events', table: 'events', rename: { start: 'start_time', end: 'end_time' },
-    cols: { id: null, name: '', category: 'other', description: '', cover: {}, date: '', start: '', end: '', location: '', expected: 0, privacy: 'private', complexity: 'simple', modules: [], features: [], taskView: 'list', permissions: {}, currency: '£', createdBy: null, createdAt: OMIT, guestNote: '', guestNoteAt: null } },
+    cols: { id: null, name: '', category: 'other', description: '', cover: {}, date: '', start: '', end: '', location: '', expected: 0, privacy: 'private', complexity: 'simple', modules: [], features: [], taskView: 'list', permissions: {}, currency: '£', createdBy: null, createdAt: OMIT, guestNote: '', guestNoteAt: null, extras: {} } },
   { coll: 'memberships', table: 'memberships', cols: { id: null, eventId: null, userId: null, role: 'guest', company: null, service: null, phone: null } },
   { coll: 'committees', table: 'committees', rename: { group: 'team_group' }, cols: { id: null, eventId: null, name: '', description: '', icon: '⭐', tone: 'lav', status: 'ontrack', group: '' } },
   { coll: 'committeeMemberships', table: 'committee_memberships', cols: { id: null, committeeId: null, userId: null, role: 'member' } },
   { coll: 'invitations', table: 'invitations', rename: { group: 'guest_group' },
     cols: { id: null, eventId: null, userId: null, name: '', email: '', phone: '', group: '', plusOneAllowed: false, invitedAt: OMIT, reminders: 0, checkedIn: false, rsvp: { status: 'pending' }, sent: {} } },
   { coll: 'bringItems', table: 'bring_items', cols: { id: null, eventId: null, name: '', note: '', claimedBy: null, position: 0, createdAt: OMIT } },
+  { coll: 'wallPosts', table: 'invite_wall', cols: { id: null, eventId: null, invitationId: null, userId: null, author: '', body: '', createdAt: OMIT } },
   { coll: 'tasks', table: 'tasks', cols: { id: null, eventId: null, committeeId: null, title: '', description: '', assigneeId: null, due: '', priority: 'medium', status: 'todo', subtasks: [], checklist: [], dependsOn: [], comments: [], attachments: [], createdAt: OMIT } },
   { coll: 'scheduleItems', table: 'schedule_items', rename: { start: 'start_time', end: 'end_time' },
     cols: { id: null, eventId: null, userId: null, at: null, date: '', start: '', end: '', title: '', location: '', ownerId: null, description: '', checklist: [], reminder: 0 } },
@@ -127,7 +128,7 @@ const DERIVED = {
   committee_budgets: { pk: 'committee_id', rows: (s) => s.committees.map((c) => ({ committee_id: c.id, event_id: c.eventId, amount: +c.budget || 0 })) },
 };
 // Order matters: a row's parent goes in first, and a member's own role row before anything that checks it.
-const ORDER = ['people', 'events', 'memberships', 'event_private', 'committees', 'committee_budgets', 'committee_memberships', 'invitations', 'bring_items',
+const ORDER = ['people', 'events', 'memberships', 'event_private', 'committees', 'committee_budgets', 'committee_memberships', 'invitations', 'bring_items', 'invite_wall',
   'tasks', 'schedule_items', 'expenses', 'media', 'announcements', 'files', 'activity', 'notifications'];
 const pkOf = (t) => DERIVED[t]?.pk || 'id';
 const TIMESTAMPS = new Set(['createdAt', 'invitedAt', 'at', 'guestNoteAt']); const NUMBERS = new Set(['amount', 'expected', 'reminders', 'reminder']);
@@ -288,6 +289,7 @@ export async function startCloud({ name, onError } = {}) {
   attachCloud(st, () => schedule());
   hooks.joinViaInvite = joinViaInvite;
   hooks.claimItem = claimItem;
+  hooks.postComment = postComment;
   setStatus('saved'); startPolling();
   return st;
 }
@@ -318,6 +320,12 @@ export async function sendInviteEmails(eventId, invitationIds, kind = 'invite') 
   await reload().catch(() => {});
   return data;
 }
+async function postComment(eventId, body) {
+  const c = await sb(); await flushNow(); check(await c.rpc('post_comment', { eid: eventId, p_body: body })); await reload();
+}
+export async function goingNames(eventId) { const c = await sb(); return check(await c.rpc('going_names', { eid: eventId })); }
+export async function guestComment(eventId, token, body) { const c = await sb(); return check(await c.rpc('guest_comment', { eid: eventId, p_token: token, p_body: body })); }
+export async function guestUncomment(eventId, token, id) { const c = await sb(); return check(await c.rpc('guest_uncomment', { eid: eventId, p_token: token, p_id: id })); }
 async function claimItem(itemId, claim) {
   const c = await sb(); await flushNow(); check(await c.rpc('claim_bring_item', { p_item: itemId, p_claim: claim })); await reload();
 }
@@ -335,7 +343,7 @@ export async function importSamples() {
   const inEv = (o) => keep.has(o.eventId);
   const pick = { events: s.events.filter((e) => keep.has(e.id)), memberships: s.memberships.filter(inEv), invitations: s.invitations.filter(inEv), committees: s.committees.filter(inEv),
     tasks: s.tasks.filter(inEv), scheduleItems: s.scheduleItems.filter(inEv), expenses: s.expenses.filter(inEv), media: s.media.filter(inEv), announcements: s.announcements.filter(inEv),
-    files: s.files.filter(inEv), activity: s.activity.filter(inEv), notifications: [], bringItems: [] };
+    files: s.files.filter(inEv), activity: s.activity.filter(inEv), notifications: [], bringItems: [], wallPosts: [] };
   pick.committeeMemberships = s.committeeMemberships.filter((m) => pick.committees.some((c2) => c2.id === m.committeeId));
   const ids = new Set([...Object.keys(s.users), ...Object.values(pick).flat().map((o) => o.id)]);
   const ren = (v) => (v === s.currentUserId ? me : typeof v === 'string' && ids.has(v) ? `${v}_${tag}` : v);

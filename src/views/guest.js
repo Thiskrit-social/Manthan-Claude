@@ -4,7 +4,8 @@
 // guest's reply.
 import { html, useState, useEffect } from '../lib.js';
 import { BRAND } from '../config.js';
-import { guestInvite, guestRsvp, guestClaim } from '../backend.js';
+import { guestInvite, guestRsvp, guestClaim, guestComment, guestUncomment } from '../backend.js';
+import { themeClass, confetti, GoingList, Wall, ChipIn } from './invite-look.js';
 import { NoteBanner, GuestBringList } from './extras.js';
 import { Icon, Pill, Cover, Field, Switch } from '../ui.js';
 import { cx, fmtLong, fmtTime } from '../utils.js';
@@ -51,7 +52,7 @@ function Reply({ ev, token, guest, onSaved }) {
     catch (e) { setMsg({ tone: 'coral', text: e.message }); }
     setBusy(false);
   };
-  const answer = (status) => send({ status }, () => { setEditing(false); setMsg({ tone: 'mint', text: status === 'declined' ? `Thanks for letting ${ev.hostName?.split(' ')[0] || 'the host'} know.` : `${ev.hostName?.split(' ')[0] || 'The host'} can see your reply.` }); });
+  const answer = (status) => send({ status }, () => { if (status === 'going') confetti(); setEditing(false); setMsg({ tone: 'mint', text: status === 'declined' ? `Thanks for letting ${ev.hostName?.split(' ')[0] || 'the host'} know.` : `${ev.hostName?.split(' ')[0] || 'The host'} can see your reply.` }); });
   const save = () => send({ ...d }, () => setMsg({ tone: 'mint', text: 'Details saved.' }));
   const first = guest.name?.split(' ')[0];
   return html`<div class=${cx('card col', !answered && 'tint c-butter')} id="guest-reply">
@@ -73,10 +74,10 @@ export function GuestInvite({ eventId, token, onSignIn }) {
   const [ev, setEv] = useState(undefined); const [error, setError] = useState('');
   useEffect(() => { guestInvite(eventId, token).then((x) => setEv(x || null)).catch((e) => { setError(e.message); setEv(null); }); }, [eventId, token]);
   useEffect(() => { if (ev?.name) document.title = `${ev.name} · ${BRAND.name}`; }, [ev?.name]);
-  const brand = html`<div class="row between" style="margin-bottom:6px"><span class="brand" style="padding:0"><span class="brand-mark">${BRAND.mark}</span>${BRAND.name}</span>
+  const brand = html`<div class="row between on-bg" style="margin-bottom:6px"><span class="brand" style="padding:0"><span class="brand-mark">${BRAND.mark}</span>${BRAND.name}</span>
     <button class="btn ghost sm" onClick=${() => onSignIn()}>Sign in</button></div>`;
-  const shell = (body) => html`<main class="page" style="max-width:640px"><div class="col gap-l">${brand}${body}
-    <p class="small muted center" style="margin-top:10px">Planning something yourself? <a href="./#home" onClick=${(e) => { e.preventDefault(); onSignIn('home'); }}>Make your own event with ${BRAND.name}</a>, free.</p></div></main>`;
+  const shell = (body) => html`<div class=${'guest-wrap ' + themeClass(ev)}><main class="page" style="max-width:640px"><div class="col gap-l">${brand}${body}
+    <p class="small muted center on-bg" style="margin-top:10px">Planning something yourself? <a href="./#home" onClick=${(e) => { e.preventDefault(); onSignIn('home'); }}>Make your own event with ${BRAND.name}</a>, free.</p></div></main></div>`;
   if (ev === undefined) return shell(html`<div class="card center muted" style="padding:40px">Opening your invitation…</div>`);
   if (!ev) return shell(html`<div class="card col center" style="padding:32px"><span style="font-size:2.4rem">💌</span><h2>This invitation isn’t available</h2><p class="muted">${error || 'The event may have been deleted, or the link was copied incompletely. Ask the host to send it again.'}</p></div>`);
   if (ev.private) return shell(html`<div class="card col center" style="padding:32px"><span style="font-size:2.4rem">🔒</span><h2>This event is invite only</h2><p class="muted">Open the personal link the host sent you by WhatsApp or email. If you have an account, sign in to see your events.</p><div><button class="btn primary" onClick=${() => onSignIn()}>Sign in</button></div></div>`);
@@ -90,11 +91,16 @@ export function GuestInvite({ eventId, token, onSignIn }) {
         ${ev.description && html`<p style="white-space:pre-line">${ev.description}</p>`}
         <span class="small muted">${ev.going} going · ${ev.maybe} maybe</span></div></div>
     <${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${ev.hostName} />
-    ${g ? html`<${Reply} ev=${ev} token=${token} guest=${g} onSaved=${(rsvp) => setEv({ ...ev, guest: { ...g, rsvp }, going: ev.going + (rsvp.status === 'going') - (status === 'going'), maybe: ev.maybe + (rsvp.status === 'maybe') - (status === 'maybe') })} />`
+    <${GoingList} people=${ev.goingList} />
+    ${g ? html`<${Reply} ev=${ev} token=${token} guest=${g} onSaved=${(rsvp) => { if (ev.goingList && rsvp.status !== status) guestInvite(ev.id, token).then((x) => x && setEv((cur) => ({ ...cur, goingList: x.goingList }))).catch(() => {}); setEv({ ...ev, guest: { ...g, rsvp }, going: ev.going + (rsvp.status === 'going') - (status === 'going'), maybe: ev.maybe + (rsvp.status === 'maybe') - (status === 'maybe') }); }} />`
       : html`<div class="card col"><h3>Want to reply?</h3><p class="small muted">This is the event’s shared link. Sign in or create a free account so the host knows who is coming. If the host sent you a personal link, open that one instead: it needs no account.</p><div><button class="btn primary" onClick=${() => onSignIn()}>Sign in to reply</button></div></div>`}
+    ${(status === 'going' || status === 'maybe') && html`<${ChipIn} chip=${ev.chipIn} currency=${ev.currency} />`}
     ${g && status !== 'declined' && html`<${GuestBringList} items=${ev.bring} onClaim=${async (item, on) => { const bring = await guestClaim(ev.id, token, item, on); setEv((cur) => ({ ...cur, bring })); }} />`}
     ${(status === 'going' || status === 'maybe') && html`<div class="card row wrap between"><span class="b">Add it to your calendar</span><div class="row wrap">
       <a class="btn sm" id="cal-google" href=${googleCalendarUrl(ev)} target="_blank" rel="noopener"><${Icon} name="calendar" size=${15} />Google Calendar</a>
       <a class="btn sm" id="cal-ics" href=${icsFile(ev)} download=${ev.name.replace(/[^\w ]+/g, '').trim() + '.ics'}><${Icon} name="calendar" size=${15} />Apple / Outlook</a></div></div>`}
-    <p class="tiny muted center">Only you have this link: anyone you forward it to can answer as you. <a href="privacy.html" target="_blank" rel="noopener">Privacy</a></p>`);
+    ${ev.wallOn && html`<${Wall} posts=${ev.wall || []} canPost=${!!g} intro=${g ? 'Everyone invited can read these.' : 'Open your personal link to join in.'}
+      onPost=${async (text) => { const wall = await guestComment(ev.id, token, text); setEv((cur) => ({ ...cur, wall })); }}
+      canDelete=${(p) => p.mine} onDelete=${async (id) => { const wall = await guestUncomment(ev.id, token, id); setEv((cur) => ({ ...cur, wall })); }} />`}
+    <p class="tiny muted center on-bg">Only you have this link: anyone you forward it to can answer as you. <a href="privacy.html" target="_blank" rel="noopener">Privacy</a></p>`);
 }

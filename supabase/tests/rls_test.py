@@ -248,4 +248,32 @@ ok(anon("select guest_invite('evP', %s)", (tokN,))[0][0]['guestNote'] == 'Parkin
 r = run('alice', "select prepare_invite_emails('evP', array['iM1'], 'update')")[0][0]
 ok(r['kind'] == 'update' and r['event']['note'] == 'Parking is behind the hall' and run('alice', "select sent ? 'update' from invitations where id='iM1'")[0][0] is True, 'the note can be emailed and the send is recorded')
 admin("delete from invitations where id = 'iAnon'"); ok(admin_one("select count(*) from bring_items where claimed_by = 'iAnon'") == 0, 'removing a guest frees their items')
+
+# --- who's going, guest comments, chip in ---
+ok(err(anon("select guest_comment('evP', %s, 'Hello!')", (tokO,))), 'comments are off unless the host turns them on')
+ok(run('alice', "update events set features = '[\"plusOnes\",\"wall\",\"guestList\"]' where id = 'evP'") == 1, 'the host turns on comments and the going list')
+w = anon("select guest_comment('evP', %s, 'Can''t wait!')", (tokO,))[0][0]
+ok(w[-1]['author'] == 'Omar' and w[-1]['body'] == "Can't wait!" and w[-1]['mine'] is True, 'a guest comments from their link without an account')
+ok(admin_one("select count(*) from notifications where event_id='evP' and text like 'Omar wrote on Private dinner: Can''t wait!%%'") == 1, 'the host is told about the comment')
+ok(err(anon("select guest_comment('evP', %s, %s)", (tokO, 'x' * 501))) and err(anon("select guest_comment('evP', %s, '   ')", (tokO,))), 'empty or over-long comments are refused')
+ok(err(anon("select guest_comment('evP', 'nottherighttoken12345', 'spam')")) and err(anon("select * from invite_wall")), 'no comments without a valid link, and no reading the table directly')
+ok(not err(run('lin', "select post_comment('evP', 'See you there')")) and err(run('zed', "select post_comment('evP', 'Let me in')")), 'signed-in guests can comment; people not invited cannot')
+g = anon("select guest_invite('evP', %s)", (tokO,))[0][0]
+ok([x['body'] for x in g['wall']] == ["Can't wait!", 'See you there'] and [x['mine'] for x in g['wall']] == [True, False] and g['wallOn'] is True, 'the invitation page shows the comments, marking the guest’s own')
+ok(isinstance(g['goingList'], list) and all(set(x) == {'name', 'plus'} and ' ' not in x['name'] for x in g['goingList']) and '@' not in json.dumps(g['goingList']), 'the going list has first names only')
+ok(run('lin', "select going_names('evP')")[0][0] == g['goingList'] and run('zed', "select going_names('evP')")[0][0] == [], 'signed-in guests see the same list; others see nothing')
+linc = admin_one("select id from invite_wall where body='See you there'"); omc = admin_one("select id from invite_wall where body='Can''t wait!'")
+ok(run('lin', "delete from invite_wall where id=%s", (omc,)) == 0 and run('lin', "delete from invite_wall where id=%s", (linc,)) == 1, 'people can delete their own comments but not others’')
+anon("select guest_comment('evP', %s, 'second')", (tokO,)); sec = admin_one("select id from invite_wall where body='second'")
+ok(len(anon("select guest_uncomment('evP', %s, %s)", (tokO, sec))[0][0]) == 1 and len(anon("select guest_uncomment('evP', %s, %s)", (tokO, omc))[0][0]) == 0, 'a guest can delete their own comment from the link')
+anon("select guest_comment('evP', %s, 'back again')", (tokO,))
+ok(run('alice', "delete from invite_wall where body='back again'") == 1, 'the host can delete any comment')
+for i in range(20): anon("select guest_comment('evP', %s, %s)", (tokO, 'm%d' % i))
+ok(err(anon("select guest_comment('evP', %s, 'one too many')", (tokO,))), 'at most 20 comments a day from one guest')
+ok(run('alice', "update events set extras = '{\"chipIn\":{\"url\":\"https://paypal.me/alice/10\",\"amount\":10,\"note\":\"For food\"}}' where id='evP'") == 1, 'the host adds a chip-in link')
+ok(anon("select guest_invite('evP', %s)", (tokO,))[0][0]['chipIn'] == {'url': 'https://paypal.me/alice/10', 'amount': 10, 'note': 'For food'}, 'guests see the chip-in link')
+ok(err(run('alice', "update events set extras = '{\"chipIn\":{\"url\":\"javascript:alert(1)\"}}' where id='evP'")) and err(run('alice', "update events set extras = '{\"chipIn\":{\"url\":\"http://plain.example\"}}' where id='evP'")), 'only https and UPI links are accepted')
+ok(run('alice', "update events set extras = '{\"chipIn\":{\"url\":\"upi://pay?pa=alice@upi&am=200\"}}' where id='evP'") == 1, 'UPI links work')
+run('alice', "update events set features = '[\"plusOnes\"]' where id = 'evP'")
+g = anon("select guest_invite('evP', %s)", (tokO,))[0][0]; ok(g['goingList'] is None and g['wall'] is None and g['wallOn'] is False, 'turning them off hides the list and comments')
 print('\n%d passed, %d failed' % (sum(results), len(results) - sum(results)))

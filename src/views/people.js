@@ -8,6 +8,7 @@ import { can, isOwner } from '../permissions.js';
 import { Icon, Avatar, Pill, RolePill, Seg, Field, Modal, Confirm, Switch, Empty, Sim, toast, copyText, Person, Tick } from '../ui.js';
 import { cx, fmtTime, ago } from '../utils.js';
 import { HeadcountCard, GuestNoteCard, BringListCard } from './extras.js';
+import { InvitePageCard, confetti } from './invite-look.js';
 
 const RsvpPill = ({ status }) => { const o = by(RSVP, status); return html`<${Pill} tone=${o.tone} dot>${o.label}<//>`; };
 
@@ -17,7 +18,7 @@ export function RsvpCard({ ev, compact }) {
   const [d, setD] = useState({ plusOne: !!r.plusOne, plusOneName: r.plusOneName || '', dietary: r.dietary || '', arrival: r.arrival || '', message: r.message || '' });
   const [editing, setEditing] = useState(r.status === 'pending');
   const plusOk = has(ev, 'plusOnes') && (inv ? inv.plusOneAllowed : true);
-  const answer = (status) => { respondToInvite(ev.id, { status, ...(status === 'declined' ? { plusOne: false } : {}) }); setEditing(status !== 'declined'); toast(status === 'going' ? 'You’re going! 🎉' : status === 'maybe' ? 'Marked as maybe' : 'Sorry you can’t make it'); };
+  const answer = (status) => { if (status === 'going' && r.status !== 'going') confetti(); respondToInvite(ev.id, { status, ...(status === 'declined' ? { plusOne: false } : {}) }); setEditing(status !== 'declined'); toast(status === 'going' ? 'You’re going! 🎉' : status === 'maybe' ? 'Marked as maybe' : 'Sorry you can’t make it'); };
   const save = () => { respondToInvite(ev.id, { status: r.status === 'pending' ? 'going' : r.status, ...d }); setEditing(false); toast('RSVP details saved'); };
   return html`<div class=${cx('card', 'col', r.status === 'pending' && 'tint c-butter')}>
     <div class="row between wrap"><div><div class="eyebrow">Your RSVP</div><h3>${r.status === 'pending' ? 'Can you make it?' : r.status === 'going' ? 'You’re going 🎉' : r.status === 'maybe' ? 'You said maybe' : 'You can’t make it'}</h3></div>
@@ -161,6 +162,7 @@ function Guests({ ev }) {
         </tr>`)}</tbody></table></div>`}
       ${pages > 1 && html`<div class="row between"><span class="small muted num">${page * per + 1}–${Math.min(list.length, page * per + per)} of ${list.length}</span><div class="row gap-s"><button class="btn sm" disabled=${page === 0} onClick=${() => setPage(page - 1)}>Previous</button><button class="btn sm" disabled=${page >= pages - 1} onClick=${() => setPage(page + 1)}>Next</button></div></div>`}
     </div>
+    ${manage && html`<${InvitePageCard} ev=${ev} />`}
     ${manage && html`<div class="grid g2" style="align-items:start"><${GuestNoteCard} ev=${ev} /><${BringListCard} ev=${ev} /></div>`}
     ${edit && html`<${GuestModal} ev=${ev} inv=${edit === 'new' ? null : all.find((i) => i.id === edit)} onClose=${(newId) => { setEdit(null); if (typeof newId === 'string') setSend(newId); }} />`}
     ${send && all.find((i) => i.id === send) && html`<${InviteSheet} ev=${ev} inv=${all.find((i) => i.id === send)} onClose=${() => setSend(null)} />`}`;

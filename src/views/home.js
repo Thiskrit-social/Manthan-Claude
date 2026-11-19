@@ -1,15 +1,16 @@
 // Personal screens: dashboard, My Events, My Tasks, notifications, profile and the invitation page.
 import { html, useState, useEffect } from '../lib.js';
 import { BRAND, ROLES, COMPLEXITY, PRIVACY, by } from '../config.js';
-import { me, meId, user, eventsFor, tasksFor, notificationsFor, invitationFor, eventById, roleIn, rsvpStats, S, activityOf, markRead, markAllRead, resetDemo, respondToInvite, isCloud, myTeams, tasksOf, progress, membersOf, scheduleOf } from '../store.js';
+import { wallOf, postComment, removeComment, has, invitationsOf, me, meId, user, eventsFor, tasksFor, notificationsFor, invitationFor, eventById, roleIn, rsvpStats, S, activityOf, markRead, markAllRead, resetDemo, respondToInvite, isCloud, myTeams, tasksOf, progress, membersOf, scheduleOf } from '../store.js';
 import { visibleTasks } from '../permissions.js';
 import { go, Icon, Avatar, Pill, RolePill, Bar, Cover, When, Empty, Sim, Confirm, toast, Seg, Field } from '../ui.js';
 import { cx, greeting, fmtDate, fmtLong, fmtTime, daysUntil, dueLabel, ago, today, addDays } from '../utils.js';
 import { TaskRow, TaskModal } from './tasks.js';
 import { RsvpCard } from './people.js';
-import { importSamples, signOut, setMode, cloudConfig, invitePreview, sendFeedback, deleteAccount } from '../backend.js';
+import { importSamples, signOut, setMode, cloudConfig, invitePreview, sendFeedback, deleteAccount, goingNames } from '../backend.js';
 import { ConnectBackend, LegalLinks } from './auth.js';
 import { NoteBanner, BringListCard } from './extras.js';
+import { themeClass, GoingList, Wall, ChipIn } from './invite-look.js';
 
 // Offered to a signed-in person with no events yet, and on their profile.
 function SamplesButton({ label = 'Add the two sample events' }) {
@@ -157,21 +158,30 @@ export function Profile({ onSwitch }) {
 export function Invite({ eventId, token }) {
   const known = eventById(eventId); const [preview, setPreview] = useState(undefined);
   useEffect(() => { if (!known && isCloud()) invitePreview(eventId, token).then((p) => setPreview(p || null)).catch(() => setPreview(null)); }, [eventId, token, !!known]);
+  // Who's going: from the server online (guests may not be allowed to read the whole guest list), from the store in the demo.
+  const [going, setGoing] = useState(null); const listOn = !!known && has(known, 'guestList'); const goingCount = known ? rsvpStats(eventId).going : 0;
+  useEffect(() => { if (!listOn) return setGoing(null);
+    if (isCloud()) goingNames(eventId).then(setGoing).catch(() => setGoing(null));
+    else setGoing(invitationsOf(eventId).filter((i) => i.rsvp.status === 'going').map((i) => ({ name: i.name.split(' ')[0], plus: !!i.rsvp.plusOne }))); }, [eventId, listOn, goingCount]);
   if (!known && isCloud() && preview === undefined) return html`<div class="card"><${Empty} emoji="💌" title="Opening the invitation…"><//></div>`;
   if (!known && preview?.private) return html`<div class="card"><${Empty} emoji="🔒" title="This event is invite only">Ask the host to send you your personal invitation link.<//></div>`;
   const ev = known || (preview && { ...preview, cover: preview.cover?.tone ? preview.cover : { tone: 'lav', emoji: '🎉' }, features: preview.features || [] });
   if (!ev) return html`<div class="card"><${Empty} emoji="💌" title="This invitation is no longer available">The event may have been deleted.<//></div>`;
   const role = roleIn(eventId); const st = known ? rsvpStats(eventId) : { going: ev.going || 0, maybe: ev.maybe || 0 }; const inv = invitationFor(eventId); const host = known ? user(ev.createdBy) : { name: ev.hostName || 'The host' };
-  return html`<div class="col gap-l" style="max-width:640px;margin:0 auto;width:100%">
-    <div class="row between wrap"><span class="eyebrow">Invitation</span>${!isCloud() && html`<${Sim}>Link preview, viewed as ${me().name.split(' ')[0]}<//>`}</div>
+  return html`<div class=${'col gap-l invite-panel ' + themeClass(ev)} style="max-width:640px;margin:0 auto;width:100%">
+    <div class="row between wrap on-bg"><span class="eyebrow">Invitation</span>${!isCloud() && html`<${Sim}>Link preview, viewed as ${me().name.split(' ')[0]}<//>`}</div>
     <div class="card col gap-l" style="padding:12px 12px 22px"><${Cover} ev=${ev} size="hero" />
       <div class="col" style="padding:0 10px;text-align:center;align-items:center"><span class="small muted">${!known && preview?.guestName ? `Hi ${preview.guestName.split(' ')[0]}, ` : ''}${host.name} invites you to</span><h1>${ev.name}</h1>
         <div class="row wrap" style="justify-content:center"><${Pill} tone="lav"><${Icon} name="calendar" size=${13} />${fmtLong(ev.date)}<//><${Pill} tone="butter"><${Icon} name="clock" size=${13} />${fmtTime(ev.start)}${ev.end ? '–' + fmtTime(ev.end) : ''}<//></div>
         <span class="row gap-s muted"><${Icon} name="pin" size=${15} />${ev.location || 'Location to be confirmed'}</span><p>${ev.description}</p>
         <span class="small muted">${st.going} going · ${st.maybe} maybe</span></div></div>
     ${ev.guestNote && html`<${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${host.name} />`}
+    <${GoingList} people=${going} />
     ${role === 'owner' ? html`<div class="banner c-butter">This is what guests see when they open your link. You’re the host, so there is nothing to answer.</div>` : html`<${RsvpCard} ev=${ev} key=${meId()} />`}
+    ${known && inv && ['going', 'maybe'].includes(inv.rsvp.status) && html`<${ChipIn} chip=${ev.extras?.chipIn} currency=${ev.currency} />`}
     ${known && inv && inv.rsvp.status !== 'declined' && role !== 'owner' && html`<${BringListCard} ev=${ev} />`}
+    ${known && has(ev, 'wall') && html`<${Wall} posts=${wallOf(ev.id)} canPost=${!!(role || inv)} intro="Everyone invited can read these."
+      onPost=${(text) => postComment(ev.id, text)} canDelete=${(p) => role === 'owner' || role === 'manager' || p.userId === meId()} onDelete=${(pid) => removeComment(pid)} />`}
     ${(role || inv) && html`<button class="btn primary" onClick=${() => go(`e-${ev.id}-overview`)}>Open the event<${Icon} name="right" /></button>`}
   </div>`;
 }

@@ -10,7 +10,7 @@ const KEY = 'gather.prototype.v1';
 const subs = new Set();
 let state = load();
 
-function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) { s.bringItems = s.bringItems || []; return s; } return null; } catch { return null; } }
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) { s.bringItems = s.bringItems || []; s.wallPosts = s.wallPosts || []; return s; } return null; } catch { return null; } }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {
     // Storage full or blocked (large photos): keep everything except image payloads.
@@ -22,7 +22,7 @@ if (!state) { state = seed(); save(); }
 let persist = save; let cloud = false;
 export const isCloud = () => cloud;
 // Hooks the cloud backend fills in for actions that need the server (joining an event from a link).
-export const hooks = { joinViaInvite: null, claimItem: null };
+export const hooks = { joinViaInvite: null, claimItem: null, postComment: null };
 export function attachCloud(next, saver) { state = next; persist = saver; cloud = true; subs.forEach((f) => f()); }
 // Replaces everything with a fresh copy from the server without saving it back.
 export function replaceState(next) { state = next; subs.forEach((f) => f()); }
@@ -41,6 +41,7 @@ export const membership = (eventId, userId = meId()) => state.memberships.find((
 export const roleIn = (eventId, userId = meId()) => membership(eventId, userId)?.role || null;
 export const membersOf = (eventId) => state.memberships.filter((m) => m.eventId === eventId);
 export const bringOf = (eventId) => (state.bringItems || []).filter((b) => b.eventId === eventId).sort((a, b) => (a.position || 0) - (b.position || 0) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+export const wallOf = (eventId) => (state.wallPosts || []).filter((w) => w.eventId === eventId).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 export const invitationsOf = (eventId) => state.invitations.filter((i) => i.eventId === eventId);
 export const invitationFor = (eventId, userId = meId()) => state.invitations.find((i) => i.eventId === eventId && i.userId === userId);
 export const committeesOf = (eventId) => state.committees.filter((c) => c.eventId === eventId);
@@ -125,7 +126,7 @@ export const setPermission = (id, role, cap, val) => mutate((s) => { s.events.fi
 export const deleteEvent = (id) => mutate((s) => {
   const cids = s.committees.filter((c) => c.eventId === id).map((c) => c.id);
   s.committeeMemberships = s.committeeMemberships.filter((m) => !cids.includes(m.committeeId));
-  ['memberships', 'invitations', 'bringItems', 'committees', 'tasks', 'scheduleItems', 'expenses', 'media', 'announcements', 'files', 'notifications', 'activity']
+  ['memberships', 'invitations', 'bringItems', 'wallPosts', 'committees', 'tasks', 'scheduleItems', 'expenses', 'media', 'announcements', 'files', 'notifications', 'activity']
     .forEach((k) => { s[k] = s[k].filter((x) => x.eventId !== id); });
   s.events = s.events.filter((e) => e.id !== id);
 });
@@ -157,7 +158,7 @@ export const respondToInvite = (eventId, patch) => {
   if (!inv) { const id = addGuest(eventId, { userId: meId(), plusOneAllowed: has(eventById(eventId), 'plusOnes'), group: 'Via link' }); inv = S().invitations.find((i) => i.id === id); }
   setRsvp(inv.id, patch);
 };
-export const removeInvitation = (id) => mutate((s) => { s.invitations = s.invitations.filter((i) => i.id !== id); (s.bringItems || []).forEach((b) => { if (b.claimedBy === id) b.claimedBy = null; }); });
+export const removeInvitation = (id) => mutate((s) => { s.invitations = s.invitations.filter((i) => i.id !== id); (s.bringItems || []).forEach((b) => { if (b.claimedBy === id) b.claimedBy = null; }); s.wallPosts = (s.wallPosts || []).filter((w) => w.invitationId !== id); });
 
 /* note to guests */
 // A short update shown at the top of every invitation page. Guests with an account also get a notification.
@@ -169,6 +170,21 @@ export const setGuestNote = (eventId, text) => mutate((s) => {
     log(s, eventId, 'posted a note to guests');
   }
 });
+
+/* invitation page: comments, theme, chip in */
+export const postComment = (eventId, body) => {
+  const text = String(body || '').trim();
+  if (!text) throw new Error('Write something first.');
+  if (text.length > 500) throw new Error('Keep it under 500 characters.');
+  if (cloud && hooks.postComment) return hooks.postComment(eventId, text);
+  const ev = eventById(eventId); if (!has(ev, 'wall')) throw new Error('Comments are turned off for this event.');
+  return mutate((s) => { const u = s.users[s.currentUserId];
+    s.wallPosts.push({ id: uid('w'), eventId, invitationId: invitationFor(eventId)?.id || null, userId: s.currentUserId, author: u.name.split(' ')[0], body: text, createdAt: now() });
+    notify(s, ownerOf(s, eventId), eventId, `${u.name.split(' ')[0]} wrote on ${ev.name}: ${text}`.slice(0, 200), `e-${eventId}-overview`); });
+};
+export const removeComment = (id) => mutate((s) => { s.wallPosts = s.wallPosts.filter((w) => w.id !== id); });
+export const setTheme = (eventId, theme) => mutate((s) => { const ev = s.events.find((e) => e.id === eventId); ev.cover = { ...ev.cover, theme }; });
+export const setChipIn = (eventId, chip) => mutate((s) => { const ev = s.events.find((e) => e.id === eventId); ev.extras = { ...(ev.extras || {}), chipIn: chip }; });
 
 /* bring list */
 export const addBringItem = (eventId, name, note = '') => mutate((s) => {

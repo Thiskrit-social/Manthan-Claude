@@ -229,3 +229,33 @@ td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: middl
 .btn.disabled { opacity: .45; }
 a.btn { text-decoration: none; }
 .center { text-align: center; align-items: center; justify-content: center; }
+
+/* ---------- invitation themes ----------
+   A theme paints the page behind the cards; cards keep their normal colours so text stays readable
+   in light and dark mode. Dark themes (.theme-dark) also lighten the text that sits on the background
+   itself (marked .on-bg). */
+.themed { background-color: var(--bg); }
+.guest-wrap { min-height: 100vh; min-height: 100dvh; }
+.invite-panel { border-radius: var(--r-lg); padding: 14px; margin: -6px; }
+.theme-disco { background: radial-gradient(rgba(255, 255, 255, .55) 1px, transparent 1.6px) 0 0 / 24px 24px,
+  radial-gradient(circle at 12% 8%, rgba(169, 150, 240, .55), transparent 38%), radial-gradient(circle at 88% 22%, rgba(255, 111, 199, .42), transparent 36%),
+  radial-gradient(circle at 50% 95%, rgba(116, 189, 242, .45), transparent 42%), var(--bg); }
+.theme-garden { background: radial-gradient(circle at 0 0, rgba(111, 211, 168, .5), transparent 40%), radial-gradient(circle at 100% 30%, rgba(243, 201, 74, .32), transparent 38%),
+  radial-gradient(circle at 20% 100%, rgba(111, 211, 168, .38), transparent 42%), var(--bg); }
+.theme-confetti { background: radial-gradient(rgba(255, 138, 117, .75) 2px, transparent 2.6px) 0 0 / 46px 46px, radial-gradient(rgba(116, 189, 242, .75) 2px, transparent 2.6px) 23px 23px / 46px 46px,
+  radial-gradient(rgba(243, 201, 74, .8) 1.6px, transparent 2.2px) 12px 30px / 38px 38px, radial-gradient(rgba(111, 211, 168, .75) 1.6px, transparent 2.2px) 30px 8px / 52px 52px, var(--bg); }
+.theme-lights { background: radial-gradient(rgba(255, 196, 70, .95) 1.4px, transparent 2.4px) 0 0 / 28px 28px, radial-gradient(rgba(255, 140, 60, .7) 1.2px, transparent 2px) 14px 14px / 28px 28px,
+  radial-gradient(circle at 50% -10%, #6b3a10, #2a1608 55%, #170c05); }
+.theme-midnight { background: radial-gradient(rgba(255, 255, 255, .85) .8px, transparent 1.4px) 0 0 / 34px 34px, radial-gradient(rgba(255, 255, 255, .5) .7px, transparent 1.2px) 17px 11px / 41px 41px,
+  radial-gradient(circle at 70% 0, #2b3a78, #121933 55%, #0b0f22); }
+.theme-minimal { background: var(--surface-2); }
+.theme-minimal h1, .theme-minimal h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: 600; letter-spacing: 0; }
+.theme-dark .on-bg, .theme-dark .on-bg .muted, .theme-dark .on-bg a, .theme-dark .on-bg .btn.ghost { color: #fff; }
+.theme-dark .on-bg .muted { opacity: .8; }
+.theme-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.theme-swatch { border: 2px solid transparent; border-radius: var(--r); min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 4px; cursor: pointer; box-shadow: var(--shadow); }
+.theme-swatch.on { border-color: var(--ink); }
+.theme-swatch .theme-emoji { font-size: 1.3rem; }
+.theme-swatch .theme-name { font-size: .78rem; font-weight: 800; background: var(--surface); color: var(--ink); border-radius: 999px; padding: 1px 8px; }
+.going { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.going-person { display: inline-flex; align-items: center; gap: 6px; }

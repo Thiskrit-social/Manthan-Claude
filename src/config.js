@@ -18,11 +18,11 @@ export const CATEGORIES = [
 ];
 // One-tap starting points for the most common events. A template only fills in the form; everything can be changed.
 export const TEMPLATES = [
-  { id: 'birthday', label: 'Birthday party', emoji: '🎂', tone: 'coral', category: 'birthday', start: '18:00', end: '22:00', expected: 20, description: 'Come and celebrate! Food, cake and good company. Let me know if you can make it.' },
-  { id: 'houseparty', label: 'House party', emoji: '🪩', tone: 'lav', category: 'houseparty', start: '20:00', end: '23:30', expected: 25, description: 'Drinks, music and good people at my place. Bring a friend if you like.' },
-  { id: 'dinner', label: 'Dinner', emoji: '🍝', tone: 'butter', category: 'dinner', start: '19:30', end: '22:30', expected: 8, description: 'A relaxed dinner together. Tell me about anything you can’t eat.' },
-  { id: 'meetup', label: 'Community meetup', emoji: '🤝', tone: 'mint', category: 'networking', start: '18:30', end: '21:00', expected: 40, privacy: 'link', description: 'An evening to meet people, swap ideas and hear a couple of short talks.' },
-  { id: 'wedding', label: 'Wedding', emoji: '💐', tone: 'coral', category: 'wedding', start: '14:00', end: '23:00', expected: 80, description: 'We’re getting married and would love you to be there. Please reply so we can plan the day.' },
+  { id: 'birthday', theme: 'confetti', label: 'Birthday party', emoji: '🎂', tone: 'coral', category: 'birthday', start: '18:00', end: '22:00', expected: 20, description: 'Come and celebrate! Food, cake and good company. Let me know if you can make it.' },
+  { id: 'houseparty', theme: 'disco', label: 'House party', emoji: '🪩', tone: 'lav', category: 'houseparty', start: '20:00', end: '23:30', expected: 25, description: 'Drinks, music and good people at my place. Bring a friend if you like.' },
+  { id: 'dinner', theme: 'minimal', label: 'Dinner', emoji: '🍝', tone: 'butter', category: 'dinner', start: '19:30', end: '22:30', expected: 8, description: 'A relaxed dinner together. Tell me about anything you can’t eat.' },
+  { id: 'meetup', theme: 'classic', label: 'Community meetup', emoji: '🤝', tone: 'mint', category: 'networking', start: '18:30', end: '21:00', expected: 40, privacy: 'link', description: 'An evening to meet people, swap ideas and hear a couple of short talks.' },
+  { id: 'wedding', theme: 'garden', label: 'Wedding', emoji: '💐', tone: 'coral', category: 'wedding', start: '14:00', end: '23:00', expected: 80, description: 'We’re getting married and would love you to be there. Please reply so we can plan the day.' },
 ];
 
 export const category = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
@@ -51,20 +51,30 @@ export const FEATURES = [
   { id: 'calendar', label: 'Task calendar', hint: 'See deadlines on a month grid.' },
   { id: 'vendors', label: 'Vendors', hint: 'Give suppliers a limited view.' },
   { id: 'groups', label: 'Departments', hint: 'Group teams under departments.' },
+  { id: 'guestList', label: 'Show who’s going', hint: 'Invitations show the first names of guests who said yes.' },
+  { id: 'wall', label: 'Guest comments', hint: 'Guests can leave messages on the invitation page.' },
 ];
+
+// Looks for the invitation page. Stored on the event as cover.theme.
+export const THEMES = [
+  { id: 'classic', label: 'Classic', emoji: '✨' }, { id: 'disco', label: 'Disco', emoji: '🪩' }, { id: 'garden', label: 'Garden', emoji: '🌿' },
+  { id: 'confetti', label: 'Birthday', emoji: '🎈' }, { id: 'lights', label: 'Festival lights', emoji: '🪔', dark: true },
+  { id: 'midnight', label: 'Midnight', emoji: '🌙', dark: true }, { id: 'minimal', label: 'Minimal', emoji: '◻️' },
+];
+export const themeOf = (ev) => THEMES.find((t) => t.id === ev?.cover?.theme) || THEMES[0];
 
 // Complexity presets only choose the *starting* layout. Nothing is locked.
 export const COMPLEXITY = {
   simple: {
     label: 'Simple', blurb: 'House parties, dinners, birthdays.', emoji: '🎈', tone: 'coral', teamWord: 'Committee',
     modules: ['overview', 'people', 'teams', 'tasks', 'schedule', 'budget', 'gallery', 'updates'],
-    features: ['plusOnes', 'volunteering'], taskView: 'list',
+    features: ['plusOnes', 'volunteering', 'guestList', 'wall'], taskView: 'list',
     teams: [['Drinks', '🍹', 'sky'], ['Food', '🍕', 'coral'], ['Music', '🎵', 'lav'], ['Decoration', '🎈', 'butter']],
   },
   organised: {
     label: 'Organised', blurb: 'Weddings, university and networking events.', emoji: '🗂️', tone: 'lav', teamWord: 'Team',
     modules: ['overview', 'people', 'teams', 'tasks', 'schedule', 'budget', 'gallery', 'updates', 'files'],
-    features: ['plusOnes', 'checkIn', 'calendar', 'dependencies'], taskView: 'board',
+    features: ['plusOnes', 'checkIn', 'calendar', 'dependencies', 'wall'], taskView: 'board',
     teams: [['Registration', '🎟️', 'sky'], ['Marketing', '📣', 'coral'], ['Logistics', '🚚', 'butter'], ['Hospitality', '☕', 'mint']],
   },
   large: {

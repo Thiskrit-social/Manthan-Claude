@@ -2,7 +2,7 @@
 // what differs between a house party and a conference is the event's modules, features and permissions.
 import { html, useState, useEffect } from '../lib.js';
 import { SECTIONS, COMPLEXITY, FEATURES, CAPS, PRIVACY, CATEGORIES, category, RSVP, by } from '../config.js';
-import { eventById, roleIn, rsvpStats, tasksOf, progress, scheduleOf, postsOf, activityOf, committeesOf, invitationsOf, invitationFor, budgetOf, updateEvent, setComplexity, toggleIn, deleteEvent, has, user, meId, mediaOf, isCloud } from '../store.js';
+import { wallOf, postComment, removeComment, eventById, roleIn, rsvpStats, tasksOf, progress, scheduleOf, postsOf, activityOf, committeesOf, invitationsOf, invitationFor, budgetOf, updateEvent, setComplexity, toggleIn, deleteEvent, has, user, meId, mediaOf, isCloud } from '../store.js';
 import { can, sectionsFor, visibleTasks, canSeePost, canCreateTask, isOwner } from '../permissions.js';
 import { go, Icon, Avatar, Stack, Pill, RolePill, Bar, Cover, When, Field, Switch, Confirm, Empty, toast, Rich } from '../ui.js';
 import { cx, fmtLong, fmtTime, fmtDate, parse, ago, money, daysUntil } from '../utils.js';
@@ -13,6 +13,7 @@ import { Schedule, Budget } from './plan.js';
 import { Gallery, PermTable } from './gallery.js';
 import { Updates, Files } from './feed.js';
 import { NoteBanner, BringListCard } from './extras.js';
+import { Wall } from './invite-look.js';
 import { Planner, PlannerNudge } from './planner.js';
 
 function Countdown({ ev }) {
@@ -36,6 +37,8 @@ function Overview({ ev, sections }) {
     ${ev.guestNote && html`<${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${user(ev.createdBy).name} />`}
     ${invitationFor(id) && role !== 'owner' && html`<${RsvpCard} ev=${ev} />`}
     ${invitationFor(id) && !can(id, 'manageGuests') && invitationFor(id).rsvp.status !== 'declined' && html`<${BringListCard} ev=${ev} />`}
+    ${has(ev, 'wall') && html`<${Wall} posts=${wallOf(id)} canPost=${true} intro="Shown on the invitation page to everyone invited."
+      onPost=${(text) => postComment(id, text)} canDelete=${(p) => can(id, 'manageGuests') || p.userId === meId()} onDelete=${(pid) => removeComment(pid)} />`}
     ${sections.includes('planner') && html`<${PlannerNudge} ev=${ev} />`}
     <div class="split">
       <div class="col gap-l">

@@ -10,7 +10,7 @@ let n = 0; const id = (p) => p + (++n).toString(36);
 export function seed() {
   n = 0;
   const s = { v: 1, rev: 0, currentUserId: 'maya', users: {}, events: [], memberships: [], invitations: [], committees: [], committeeMemberships: [],
-    tasks: [], scheduleItems: [], expenses: [], media: [], announcements: [], files: [], notifications: [], activity: [], bringItems: [] };
+    tasks: [], scheduleItems: [], expenses: [], media: [], announcements: [], files: [], notifications: [], activity: [], bringItems: [], wallPosts: [] };
 
   /* ---------- people ---------- */
   const people = { maya: 'Maya Chen', leo: 'Leo Martins', ava: 'Ava Thompson', dan: 'Daniel Okafor', sam: 'Sam Rivera', priya: 'Priya Nair', jonas: 'Jonas Weber',
@@ -48,9 +48,10 @@ export function seed() {
      ===================================================================== */
   const dow = new Date().getDay(); let toSat = (6 - dow + 7) % 7; if (toSat < 2) toSat += 7;
   const P = 'evparty'; const pDay = addDays(toSat);
-  event({ id: P, name: 'Saturday House Party', category: 'houseparty', complexity: 'simple', cover: { tone: 'lav', emoji: '🪩' },
+  event({ id: P, name: 'Saturday House Party', category: 'houseparty', complexity: 'simple', cover: { tone: 'lav', emoji: '🪩', theme: 'disco' },
     description: 'Flat-warming meets end-of-term party. Bring a friend, a snack and your best playlist request.',
-    date: pDay, start: '19:00', end: '23:30', location: 'Maya’s flat · 14 Juniper Lane, Flat 3', expected: 15, privacy: 'link', budget: 180, createdBy: 'maya' });
+    date: pDay, start: '19:00', end: '23:30', location: 'Maya’s flat · 14 Juniper Lane, Flat 3', expected: 15, privacy: 'link', budget: 180, createdBy: 'maya',
+    extras: { chipIn: { url: 'https://paypal.me/example/8', amount: 8, note: 'Towards drinks and pizza' } } });
   member(P, 'maya', 'owner');
   const guests = [
     ['leo', 'going', { arrival: '19:00', message: 'Bringing the cocktail shaker!' }], ['dan', 'going', { arrival: '18:30', dietary: 'No pork', message: 'Coming early to set up speakers.' }],
@@ -66,6 +67,9 @@ export function seed() {
   const invOf = (u) => s.invitations.find((i) => i.eventId === P && i.userId === u)?.id || null;
   [['Ice (2 bags)', '', 'leo'], ['Crisps and dips', '', null], ['Dessert', 'Something sweet for about 15', 'priya'], ['Bluetooth speaker', '', null], ['Paper cups', '', null], ['Board game', 'For the quieter corner', null]]
     .forEach(([name, note, who], i) => s.bringItems.push({ id: id('b'), eventId: P, name, note, claimedBy: who ? invOf(who) : null, position: i + 1, createdAt: hoursAgo(48) }));
+  // Comments on the invitation page.
+  [['noor', 'Fairy lights are sorted ✨', 30], ['mei', 'Kenji says hi! Can’t wait.', 20], ['leo', 'Who wants a mojito on arrival? 🍹', 6]]
+    .forEach(([u, body, h]) => s.wallPosts.push({ id: id('w'), eventId: P, invitationId: invOf(u), userId: u, author: s.users[u].name.split(' ')[0], body, createdAt: hoursAgo(h) }));
   team('cpdrinks', P, 'Drinks', '🍹', 'sky', 'Cocktails, mocktails, ice and enough cups.', 70, 'priya', ['leo', 'omar']);
   team('cpfood', P, 'Food', '🍕', 'coral', 'Snacks, pizza order and a dessert table.', 60, 'zoe', ['ben', 'jonas']);
   team('cpmusic', P, 'Music', '🎵', 'lav', 'Playlist, speakers and keeping the neighbours happy.', 15, 'dan', ['mei']);

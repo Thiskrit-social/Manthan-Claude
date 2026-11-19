@@ -235,3 +235,12 @@ On an event's People tab, people who manage guests get:
 - **Who's bringing what:** a list of things guests can bring, with one-tap ideas for the type of event. Guests take an item from their invitation link (no account needed) or in the app; at most five per guest, and nobody can take an item someone else has. Hosts can assign items themselves.
 
 Database: migration `007_bring_list_and_guest_note.sql`. The automatic email function gained an `update` message type, so redeploy `supabase/functions/send-invites` after pulling.
+
+## Invitation themes, who's going, comments and chip-in
+
+- **Themes:** seven looks for the invitation page (Classic, Disco, Garden, Birthday, Festival lights, Midnight, Minimal), stored as `cover.theme`. Picked when creating an event (templates choose one) or on the People tab under "Invitation page". Saying Going sets off confetti, unless the device asks for reduced motion.
+- **Who's going:** first names of guests who said yes, with plus-ones counted. Event feature `guestList`.
+- **Comments:** a message wall on the invitation, usable from a personal link without an account (`guest_comment`, `guest_uncomment`) or signed in (`post_comment`). At most 20 a day per guest; the host is notified and can delete any comment. Event feature `wall`.
+- **Chip in:** `events.extras.chipIn = { url, amount, note }`, shown as a Pay button once a guest has replied Going or Maybe. Only `https://` and `upi://` links are accepted. Money goes directly through that service; Gather never handles it.
+
+New Simple events start with the going list and comments on; Organised events with comments on. Both can be switched in the People tab or Setup → Extra tools. Database: migration `008_invite_social_and_chip_in.sql`.
