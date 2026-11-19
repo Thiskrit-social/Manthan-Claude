@@ -7,6 +7,7 @@ import { eventLink, personalLinkFor, inviteText, inviteSubject, whatsappUrl, mai
 import { can, isOwner } from '../permissions.js';
 import { Icon, Avatar, Pill, RolePill, Seg, Field, Modal, Confirm, Switch, Empty, Sim, toast, copyText, Person, Tick } from '../ui.js';
 import { cx, fmtTime, ago } from '../utils.js';
+import { HeadcountCard, GuestNoteCard, BringListCard } from './extras.js';
 
 const RsvpPill = ({ status }) => { const o = by(RSVP, status); return html`<${Pill} tone=${o.tone} dot>${o.label}<//>`; };
 
@@ -130,6 +131,7 @@ function Guests({ ev }) {
       <div class="card tint c-grey stat"><span class="v">${st.pending}</span><span class="k">Waiting for a reply</span></div>
       <div class="card tint c-coral stat"><span class="v">${st.declined}</span><span class="k">Can’t go</span></div>
     </div>
+    ${manage && html`<${HeadcountCard} ev=${ev} />`}
     ${manage && html`<div class="card col"><div class="row between wrap"><div class="col" style="gap:2px"><h3>Send invitations</h3><span class="small muted">${ev.privacy === 'private' ? 'Invite only: each guest needs their personal link. Use the send button next to a guest.' : 'Share the event link anywhere, or send each guest their personal link.'}</span></div>
       <div class="row wrap">${ev.privacy !== 'private' && html`<a id="share-whatsapp" class="btn soft c-mint" href=${whatsappUrl('', inviteText(ev, '', link, { host: me()?.name }))} target="_blank" rel="noopener"><${Icon} name="message" />Share on WhatsApp</a>
         <button class="btn soft c-lav" onClick=${async () => toast((await copyText(link)) ? 'Event link copied' : link)}><${Icon} name="link" />Copy event link</button>`}
@@ -159,6 +161,7 @@ function Guests({ ev }) {
         </tr>`)}</tbody></table></div>`}
       ${pages > 1 && html`<div class="row between"><span class="small muted num">${page * per + 1}–${Math.min(list.length, page * per + per)} of ${list.length}</span><div class="row gap-s"><button class="btn sm" disabled=${page === 0} onClick=${() => setPage(page - 1)}>Previous</button><button class="btn sm" disabled=${page >= pages - 1} onClick=${() => setPage(page + 1)}>Next</button></div></div>`}
     </div>
+    ${manage && html`<div class="grid g2" style="align-items:start"><${GuestNoteCard} ev=${ev} /><${BringListCard} ev=${ev} /></div>`}
     ${edit && html`<${GuestModal} ev=${ev} inv=${edit === 'new' ? null : all.find((i) => i.id === edit)} onClose=${(newId) => { setEdit(null); if (typeof newId === 'string') setSend(newId); }} />`}
     ${send && all.find((i) => i.id === send) && html`<${InviteSheet} ev=${ev} inv=${all.find((i) => i.id === send)} onClose=${() => setSend(null)} />`}`;
 }

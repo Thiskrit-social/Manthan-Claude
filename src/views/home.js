@@ -9,6 +9,7 @@ import { TaskRow, TaskModal } from './tasks.js';
 import { RsvpCard } from './people.js';
 import { importSamples, signOut, setMode, cloudConfig, invitePreview, sendFeedback, deleteAccount } from '../backend.js';
 import { ConnectBackend, LegalLinks } from './auth.js';
+import { NoteBanner, BringListCard } from './extras.js';
 
 // Offered to a signed-in person with no events yet, and on their profile.
 function SamplesButton({ label = 'Add the two sample events' }) {
@@ -168,7 +169,9 @@ export function Invite({ eventId, token }) {
         <div class="row wrap" style="justify-content:center"><${Pill} tone="lav"><${Icon} name="calendar" size=${13} />${fmtLong(ev.date)}<//><${Pill} tone="butter"><${Icon} name="clock" size=${13} />${fmtTime(ev.start)}${ev.end ? '–' + fmtTime(ev.end) : ''}<//></div>
         <span class="row gap-s muted"><${Icon} name="pin" size=${15} />${ev.location || 'Location to be confirmed'}</span><p>${ev.description}</p>
         <span class="small muted">${st.going} going · ${st.maybe} maybe</span></div></div>
+    ${ev.guestNote && html`<${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${host.name} />`}
     ${role === 'owner' ? html`<div class="banner c-butter">This is what guests see when they open your link. You’re the host, so there is nothing to answer.</div>` : html`<${RsvpCard} ev=${ev} key=${meId()} />`}
+    ${known && inv && inv.rsvp.status !== 'declined' && role !== 'owner' && html`<${BringListCard} ev=${ev} />`}
     ${(role || inv) && html`<button class="btn primary" onClick=${() => go(`e-${ev.id}-overview`)}>Open the event<${Icon} name="right" /></button>`}
   </div>`;
 }

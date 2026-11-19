@@ -12,6 +12,7 @@ import { Tasks, TaskRow, TaskModal } from './tasks.js';
 import { Schedule, Budget } from './plan.js';
 import { Gallery, PermTable } from './gallery.js';
 import { Updates, Files } from './feed.js';
+import { NoteBanner, BringListCard } from './extras.js';
 import { Planner, PlannerNudge } from './planner.js';
 
 function Countdown({ ev }) {
@@ -32,7 +33,9 @@ function Overview({ ev, sections }) {
     sections.includes('updates') && ['updates', 'megaphone', 'Post an update', 'butter'], sections.includes('gallery') && ['gallery', 'camera', 'Add a photo', 'coral'],
     can(id, 'manageSchedule') && ['schedule', 'clock', 'Plan the day', 'mint'], sections.includes('budget') && ['budget', 'wallet', 'Record expense', 'mint']].filter(Boolean).slice(0, 4);
   return html`
+    ${ev.guestNote && html`<${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${user(ev.createdBy).name} />`}
     ${invitationFor(id) && role !== 'owner' && html`<${RsvpCard} ev=${ev} />`}
+    ${invitationFor(id) && !can(id, 'manageGuests') && invitationFor(id).rsvp.status !== 'declined' && html`<${BringListCard} ev=${ev} />`}
     ${sections.includes('planner') && html`<${PlannerNudge} ev=${ev} />`}
     <div class="split">
       <div class="col gap-l">

@@ -224,4 +224,28 @@ ok(err(anon("select * from invitations")) or anon("select count(*) from invitati
 admin("update events set privacy = 'link' where id = 'evP'")
 ok(anon("select guest_invite('evP', null)")[0][0]['name'] == 'Private dinner' and anon("select guest_invite('evP', null)")[0][0]['guest'] is None, 'an event open to anyone with the link can be seen without signing in')
 admin("update events set privacy = 'private' where id = 'evP'")
+
+# --- bring list and note to guests ---
+ok(run('alice', "insert into bring_items (id,event_id,name,position) values ('b1','evP','Ice',1),('b2','evP','Dessert',2),('b3','evP','Speaker',3),('b4','evP','Cups',4),('b5','evP','Plates',5),('b6','evP','Napkins',6)") == 6, 'the host adds things to bring')
+ok(err(run('lin', "insert into bring_items (id,event_id,name) values ('bx','evP','Sneaky')")) and run('lin', "update bring_items set claimed_by='iLin' where id='b1'") == 0, 'guests cannot add items or claim by editing the list directly')
+ok(len(run('lin', "select id from bring_items where event_id='evP'")) == 6 and run('zed', "select id from bring_items where event_id='evP'") == [], 'guests in the event see the list; outsiders do not')
+L = anon("select guest_claim('evP', %s, 'b1', true)", (tokN,))[0][0]
+ok([x for x in L if x['id'] == 'b1'][0]['mine'] is True and [x for x in L if x['id'] == 'b1'][0]['by'] == 'Nina', 'a guest claims an item from their link without an account')
+r = anon("select guest_claim('evP', %s, 'b1', true)", (tokO,)); ok(err(r) and 'Nina is already bringing that' in r[1], 'nobody can take an item someone else has')
+anon("select guest_claim('evP', %s, 'b1', false)", (tokO,)); ok(admin_one("select claimed_by from bring_items where id='b1'") == 'iAnon', 'nor give back someone else’s item')
+g = anon("select guest_invite('evP', %s)", (tokO,))[0][0]
+ok([x for x in g['bring'] if x['id'] == 'b1'][0] == {'id': 'b1', 'name': 'Ice', 'note': '', 'mine': False, 'by': 'Nina'} and 'iAnon' not in json.dumps(g['bring']), 'others see only the first name of who is bringing what')
+for b in ['b2', 'b3', 'b4', 'b5']: anon("select guest_claim('evP', %s, %s, true)", (tokN, b))
+ok(err(anon("select guest_claim('evP', %s, 'b6', true)", (tokN,))), 'one guest can take at most five items')
+anon("select guest_claim('evP', %s, 'b5', false)", (tokN,)); ok(admin_one("select claimed_by is null from bring_items where id='b5'") is True, 'a guest can give an item back')
+ok(err(anon("select guest_claim('evP', 'nottherighttoken12345', 'b6', true)")) and err(anon("select claim_bring_item('b6', true)")), 'wrong links and signed-out calls cannot claim')
+ok(not err(run('lin', "select claim_bring_item('b6', true)")) and admin_one("select claimed_by from bring_items where id='b6'") == 'iLin', 'a signed-in guest claims through their own invitation')
+ok(err(run('zed', "select claim_bring_item('b5', true)")), 'someone not invited cannot claim')
+ok(run('alice', "update bring_items set claimed_by = 'iAnon2' where id = 'b5'") == 1, 'the host can assign an item to a guest')
+ok(err(run('alice', "select prepare_invite_emails('evP', array['iM1'], 'update')")), 'an update email needs a note first')
+ok(run('alice', "update events set guest_note = 'Parking is behind the hall', guest_note_at = now() where id = 'evP'") == 1 and run('lin', "update events set guest_note = 'x' where id = 'evP'") == 0, 'only the host writes the note')
+ok(anon("select guest_invite('evP', %s)", (tokN,))[0][0]['guestNote'] == 'Parking is behind the hall', 'the note shows on the invitation page')
+r = run('alice', "select prepare_invite_emails('evP', array['iM1'], 'update')")[0][0]
+ok(r['kind'] == 'update' and r['event']['note'] == 'Parking is behind the hall' and run('alice', "select sent ? 'update' from invitations where id='iM1'")[0][0] is True, 'the note can be emailed and the send is recorded')
+admin("delete from invitations where id = 'iAnon'"); ok(admin_one("select count(*) from bring_items where claimed_by = 'iAnon'") == 0, 'removing a guest frees their items')
 print('\n%d passed, %d failed' % (sum(results), len(results) - sum(results)))

@@ -10,7 +10,7 @@ let n = 0; const id = (p) => p + (++n).toString(36);
 export function seed() {
   n = 0;
   const s = { v: 1, rev: 0, currentUserId: 'maya', users: {}, events: [], memberships: [], invitations: [], committees: [], committeeMemberships: [],
-    tasks: [], scheduleItems: [], expenses: [], media: [], announcements: [], files: [], notifications: [], activity: [] };
+    tasks: [], scheduleItems: [], expenses: [], media: [], announcements: [], files: [], notifications: [], activity: [], bringItems: [] };
 
   /* ---------- people ---------- */
   const people = { maya: 'Maya Chen', leo: 'Leo Martins', ava: 'Ava Thompson', dan: 'Daniel Okafor', sam: 'Sam Rivera', priya: 'Priya Nair', jonas: 'Jonas Weber',
@@ -62,6 +62,10 @@ export function seed() {
     ['ava', 'pending'], ['ella', 'pending'], ['ravi', 'pending'],
   ];
   guests.forEach(([u, st, r]) => invite(P, u, st, r, { group: 'Friend' }));
+  // Things guests can offer to bring; two already taken.
+  const invOf = (u) => s.invitations.find((i) => i.eventId === P && i.userId === u)?.id || null;
+  [['Ice (2 bags)', '', 'leo'], ['Crisps and dips', '', null], ['Dessert', 'Something sweet for about 15', 'priya'], ['Bluetooth speaker', '', null], ['Paper cups', '', null], ['Board game', 'For the quieter corner', null]]
+    .forEach(([name, note, who], i) => s.bringItems.push({ id: id('b'), eventId: P, name, note, claimedBy: who ? invOf(who) : null, position: i + 1, createdAt: hoursAgo(48) }));
   team('cpdrinks', P, 'Drinks', '🍹', 'sky', 'Cocktails, mocktails, ice and enough cups.', 70, 'priya', ['leo', 'omar']);
   team('cpfood', P, 'Food', '🍕', 'coral', 'Snacks, pizza order and a dessert table.', 60, 'zoe', ['ben', 'jonas']);
   team('cpmusic', P, 'Music', '🎵', 'lav', 'Playlist, speakers and keeping the neighbours happy.', 15, 'dan', ['mei']);

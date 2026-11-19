@@ -1,4 +1,4 @@
-// Gather: sends invitation and reminder emails through Brevo's free plan (300 emails a day).
+// Gather: sends invitation, reminder and update (note to guests) emails through Brevo's free plan (300 emails a day).
 //
 // Setup, once, in the Supabase dashboard (Edge Functions -> Secrets):
 //   BREVO_API_KEY  an API key from Brevo (Settings -> SMTP & API -> API keys)
@@ -36,22 +36,24 @@ function publishableKey(env) {
 
 export function buildEmail({ event, host, kind, recipient, link }) {
   const hostName = host?.name || 'Your host';
-  const subject = kind === 'reminder' ? `Reminder: can you make ${event.name}?` : `You’re invited: ${event.name}`;
+  const subject = kind === 'reminder' ? `Reminder: can you make ${event.name}?` : kind === 'update' ? `Update: ${event.name}` : `You’re invited: ${event.name}`;
   const lead = kind === 'reminder'
     ? `${hostName} is still hoping to hear whether you can make it.`
-    : `${hostName} would love you to come.`;
+    : kind === 'update' ? `${hostName} has an update for you:` : `${hostName} would love you to come.`;
+  const note = kind === 'update' ? String(event.note || '').trim() : '';
   const details = [when(event), event.location].filter(Boolean);
-  const text = `Hi ${firstName(recipient.name)},\n\n${lead}\n\n${event.name}\n${details.join('\n')}\n${event.description ? '\n' + event.description + '\n' : ''}\nReply here: ${link}\n\nSent with Gather on behalf of ${hostName}. Reply to this email to reach them.`;
+  const text = `Hi ${firstName(recipient.name)},\n\n${lead}\n${note ? '\n' + note + '\n' : ''}\n${event.name}\n${details.join('\n')}\n${event.description ? '\n' + event.description + '\n' : ''}\nReply here: ${link}\n\nSent with Gather on behalf of ${hostName}. Reply to this email to reach them.`;
   const html = `<!doctype html><html><body style="margin:0;background:#faf6ef;font-family:Helvetica,Arial,sans-serif;color:#2a2733">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px 16px">
 <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:18px;padding:28px" cellpadding="0" cellspacing="0"><tr><td>
-<p style="margin:0 0 6px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#8a8597">${kind === 'reminder' ? 'Reminder' : 'Invitation'}</p>
+<p style="margin:0 0 6px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#8a8597">${kind === 'reminder' ? 'Reminder' : kind === 'update' ? 'Update' : 'Invitation'}</p>
 <h1 style="margin:0 0 14px;font-size:24px;line-height:1.2">${esc(event.name)}</h1>
 <p style="margin:0 0 14px;font-size:16px;line-height:1.5">Hi ${esc(firstName(recipient.name))}, ${esc(lead)}</p>
+${note ? `<p style="margin:0 0 16px;padding:14px 16px;background:#fdf3d6;border-radius:12px;font-size:16px;line-height:1.5;white-space:pre-line"><b>${esc(note)}</b></p>` : ''}
 <p style="margin:0 0 4px;font-size:15px"><b>${esc(when(event))}</b></p>
 ${event.location ? `<p style="margin:0 0 14px;font-size:15px;color:#5d596b">${esc(event.location)}</p>` : ''}
 ${event.description ? `<p style="margin:0 0 18px;font-size:15px;line-height:1.5;color:#5d596b">${esc(event.description)}</p>` : ''}
-<p style="margin:22px 0"><a href="${esc(link)}" style="background:#2a2733;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:bold;display:inline-block">Reply to the invitation</a></p>
+<p style="margin:22px 0"><a href="${esc(link)}" style="background:#2a2733;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:bold;display:inline-block">${kind === 'update' ? 'See the invitation' : 'Reply to the invitation'}</a></p>
 <p style="margin:0;font-size:13px;color:#8a8597;line-height:1.5">Or open this link: <a href="${esc(link)}" style="color:#5b46b8">${esc(link)}</a><br>Sent with Gather on behalf of ${esc(hostName)}. Reply to this email to reach them.</p>
 </td></tr></table></td></tr></table></body></html>`;
   return { subject, text, html };
@@ -74,7 +76,7 @@ export async function handle(req, deps = {}) {
   if (typeof eventId !== 'string' || !Array.isArray(invitationIds) || invitationIds.length < 1 || invitationIds.length > 100 || !invitationIds.every((x) => typeof x === 'string')) {
     return json({ error: 'Choose between 1 and 100 guests.' }, 400);
   }
-  if (!['invite', 'reminder'].includes(kind)) return json({ error: 'Unknown message type.' }, 400);
+  if (!['invite', 'reminder', 'update'].includes(kind)) return json({ error: 'Unknown message type.' }, 400);
 
   // The database checks the caller's session and permissions, records the send, and returns the details.
   const prep = await doFetch(`${env('SUPABASE_URL')}/rest/v1/rpc/prepare_invite_emails`, {

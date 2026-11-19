@@ -225,3 +225,13 @@ onto tables or Dart models if the product is rebuilt in Flutter.
 A guest's personal link (`#invite-<event>-<token>`) opens the event page directly, with no sign-in. The guest answers Going, Maybe or Can't go, can add arrival time, dietary needs, a plus-one (if the host allows one) and a message, and gets add-to-calendar links. They can reopen the same link to change their answer. The host sees the reply in the guest list and gets a notification.
 
 The database functions `guest_invite` and `guest_rsvp` (migration `006_reply_without_account.sql`) are the only things a token alone can reach: one event, and only the reply fields of that one invitation. An invite-only event opened without a valid token shows nothing. An event open to "anyone with the link" can be viewed without signing in, but replying from the shared (non-personal) link needs an account, so the host knows who answered. If the guest later creates an account from the link, the invitation becomes theirs.
+
+## Headcount, note to guests and the bring list
+
+On an event's People tab, people who manage guests get:
+
+- **Headcount for the day:** guests coming plus their plus-ones, maybes, no replies, and food needs grouped across everyone coming. Share it on WhatsApp, copy it, or download the guest list as a spreadsheet (CSV, opens in Excel or Google Sheets).
+- **Note to guests:** a short update shown at the top of every invitation page and the event overview. Share it on WhatsApp, or email it to everyone going or maybe (when automatic email is set up). Guests with an account also get a notification.
+- **Who's bringing what:** a list of things guests can bring, with one-tap ideas for the type of event. Guests take an item from their invitation link (no account needed) or in the app; at most five per guest, and nobody can take an item someone else has. Hosts can assign items themselves.
+
+Database: migration `007_bring_list_and_guest_note.sql`. The automatic email function gained an `update` message type, so redeploy `supabase/functions/send-invites` after pulling.

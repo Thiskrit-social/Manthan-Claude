@@ -10,7 +10,7 @@ const KEY = 'gather.prototype.v1';
 const subs = new Set();
 let state = load();
 
-function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.v === 1 ? s : null; } catch { return null; } }
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) { s.bringItems = s.bringItems || []; return s; } return null; } catch { return null; } }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {
     // Storage full or blocked (large photos): keep everything except image payloads.
@@ -22,7 +22,7 @@ if (!state) { state = seed(); save(); }
 let persist = save; let cloud = false;
 export const isCloud = () => cloud;
 // Hooks the cloud backend fills in for actions that need the server (joining an event from a link).
-export const hooks = { joinViaInvite: null };
+export const hooks = { joinViaInvite: null, claimItem: null };
 export function attachCloud(next, saver) { state = next; persist = saver; cloud = true; subs.forEach((f) => f()); }
 // Replaces everything with a fresh copy from the server without saving it back.
 export function replaceState(next) { state = next; subs.forEach((f) => f()); }
@@ -40,6 +40,7 @@ export const eventById = (id) => state.events.find((e) => e.id === id);
 export const membership = (eventId, userId = meId()) => state.memberships.find((m) => m.eventId === eventId && m.userId === userId);
 export const roleIn = (eventId, userId = meId()) => membership(eventId, userId)?.role || null;
 export const membersOf = (eventId) => state.memberships.filter((m) => m.eventId === eventId);
+export const bringOf = (eventId) => (state.bringItems || []).filter((b) => b.eventId === eventId).sort((a, b) => (a.position || 0) - (b.position || 0) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
 export const invitationsOf = (eventId) => state.invitations.filter((i) => i.eventId === eventId);
 export const invitationFor = (eventId, userId = meId()) => state.invitations.find((i) => i.eventId === eventId && i.userId === userId);
 export const committeesOf = (eventId) => state.committees.filter((c) => c.eventId === eventId);
@@ -124,7 +125,7 @@ export const setPermission = (id, role, cap, val) => mutate((s) => { s.events.fi
 export const deleteEvent = (id) => mutate((s) => {
   const cids = s.committees.filter((c) => c.eventId === id).map((c) => c.id);
   s.committeeMemberships = s.committeeMemberships.filter((m) => !cids.includes(m.committeeId));
-  ['memberships', 'invitations', 'committees', 'tasks', 'scheduleItems', 'expenses', 'media', 'announcements', 'files', 'notifications', 'activity']
+  ['memberships', 'invitations', 'bringItems', 'committees', 'tasks', 'scheduleItems', 'expenses', 'media', 'announcements', 'files', 'notifications', 'activity']
     .forEach((k) => { s[k] = s[k].filter((x) => x.eventId !== id); });
   s.events = s.events.filter((e) => e.id !== id);
 });
@@ -156,7 +157,35 @@ export const respondToInvite = (eventId, patch) => {
   if (!inv) { const id = addGuest(eventId, { userId: meId(), plusOneAllowed: has(eventById(eventId), 'plusOnes'), group: 'Via link' }); inv = S().invitations.find((i) => i.id === id); }
   setRsvp(inv.id, patch);
 };
-export const removeInvitation = (id) => mutate((s) => { s.invitations = s.invitations.filter((i) => i.id !== id); });
+export const removeInvitation = (id) => mutate((s) => { s.invitations = s.invitations.filter((i) => i.id !== id); (s.bringItems || []).forEach((b) => { if (b.claimedBy === id) b.claimedBy = null; }); });
+
+/* note to guests */
+// A short update shown at the top of every invitation page. Guests with an account also get a notification.
+export const setGuestNote = (eventId, text) => mutate((s) => {
+  const ev = s.events.find((e) => e.id === eventId); const t = String(text || '').trim().slice(0, 1000);
+  ev.guestNote = t; ev.guestNoteAt = t ? now() : null;
+  if (t) {
+    s.memberships.filter((m) => m.eventId === eventId && m.role === 'guest').forEach((m) => notify(s, m.userId, eventId, `Update for ${ev.name}: ${t.length > 90 ? t.slice(0, 88) + '…' : t}`, `invite-${eventId}`));
+    log(s, eventId, 'posted a note to guests');
+  }
+});
+
+/* bring list */
+export const addBringItem = (eventId, name, note = '') => mutate((s) => {
+  s.bringItems = s.bringItems || []; const pos = Math.max(0, ...s.bringItems.filter((b) => b.eventId === eventId).map((b) => b.position || 0)) + 1;
+  s.bringItems.push({ id: uid('b'), eventId, name: String(name).trim().slice(0, 120), note: String(note || '').trim().slice(0, 300), claimedBy: null, position: pos, createdAt: now() });
+});
+export const updateBringItem = (id, patch) => mutate((s) => { Object.assign(s.bringItems.find((b) => b.id === id), patch); });
+export const removeBringItem = (id) => mutate((s) => { s.bringItems = s.bringItems.filter((b) => b.id !== id); });
+// A guest taking (or giving back) an item. Online, the server checks it is free and that this is their invitation.
+export const claimBringItem = (itemId, claim) => {
+  if (cloud && hooks.claimItem) return hooks.claimItem(itemId, claim);
+  const item = state.bringItems.find((b) => b.id === itemId); const inv = item && invitationFor(item.eventId);
+  if (!inv) throw new Error('Only invited guests can pick something to bring.');
+  if (claim && item.claimedBy && item.claimedBy !== inv.id) throw new Error(`${state.invitations.find((i) => i.id === item.claimedBy)?.name.split(' ')[0] || 'Someone'} is already bringing that.`);
+  if (claim && state.bringItems.filter((b) => b.eventId === item.eventId && b.claimedBy === inv.id).length >= 5) throw new Error('That’s plenty, thank you! Give one back to take another.');
+  return mutate(() => { if (claim) item.claimedBy = inv.id; else if (item.claimedBy === inv.id) item.claimedBy = null; });
+};
 export const toggleCheckIn = (id) => mutate((s) => { const i = s.invitations.find((x) => x.id === id); i.checkedIn = !i.checkedIn; });
 export const remind = (eventId, invId) => mutate((s) => {
   const list = s.invitations.filter((i) => i.eventId === eventId && (invId ? i.id === invId : i.rsvp.status === 'pending'));

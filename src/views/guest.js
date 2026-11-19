@@ -4,7 +4,8 @@
 // guest's reply.
 import { html, useState, useEffect } from '../lib.js';
 import { BRAND } from '../config.js';
-import { guestInvite, guestRsvp } from '../backend.js';
+import { guestInvite, guestRsvp, guestClaim } from '../backend.js';
+import { NoteBanner, GuestBringList } from './extras.js';
 import { Icon, Pill, Cover, Field, Switch } from '../ui.js';
 import { cx, fmtLong, fmtTime } from '../utils.js';
 
@@ -88,8 +89,10 @@ export function GuestInvite({ eventId, token, onSignIn }) {
         ${ev.location ? html`<a class="row gap-s" href=${mapUrl(ev.location)} target="_blank" rel="noopener"><${Icon} name="pin" size=${15} />${ev.location}</a>` : html`<span class="row gap-s muted"><${Icon} name="pin" size=${15} />Location to be confirmed</span>`}
         ${ev.description && html`<p style="white-space:pre-line">${ev.description}</p>`}
         <span class="small muted">${ev.going} going · ${ev.maybe} maybe</span></div></div>
+    <${NoteBanner} text=${ev.guestNote} at=${ev.guestNoteAt} host=${ev.hostName} />
     ${g ? html`<${Reply} ev=${ev} token=${token} guest=${g} onSaved=${(rsvp) => setEv({ ...ev, guest: { ...g, rsvp }, going: ev.going + (rsvp.status === 'going') - (status === 'going'), maybe: ev.maybe + (rsvp.status === 'maybe') - (status === 'maybe') })} />`
       : html`<div class="card col"><h3>Want to reply?</h3><p class="small muted">This is the event’s shared link. Sign in or create a free account so the host knows who is coming. If the host sent you a personal link, open that one instead: it needs no account.</p><div><button class="btn primary" onClick=${() => onSignIn()}>Sign in to reply</button></div></div>`}
+    ${g && status !== 'declined' && html`<${GuestBringList} items=${ev.bring} onClaim=${async (item, on) => { const bring = await guestClaim(ev.id, token, item, on); setEv((cur) => ({ ...cur, bring })); }} />`}
     ${(status === 'going' || status === 'maybe') && html`<div class="card row wrap between"><span class="b">Add it to your calendar</span><div class="row wrap">
       <a class="btn sm" id="cal-google" href=${googleCalendarUrl(ev)} target="_blank" rel="noopener"><${Icon} name="calendar" size=${15} />Google Calendar</a>
       <a class="btn sm" id="cal-ics" href=${icsFile(ev)} download=${ev.name.replace(/[^\w ]+/g, '').trim() + '.ics'}><${Icon} name="calendar" size=${15} />Apple / Outlook</a></div></div>`}
