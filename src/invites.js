@@ -2,10 +2,13 @@
 // WhatsApp's own API charges for business-sent invitations, so Gather opens WhatsApp with the message
 // ready and the host taps Send: free, and it comes from the host's own number.
 import { fmtDate, fmtTime } from './utils.js';
+import { BACKEND } from './backend-config.js';
 
 export const appBase = () => location.origin + location.pathname.replace(/[^/]*$/, '');
-export const eventLink = (ev) => `${appBase()}#invite-${ev.id}`;
-export const personalLinkFor = (ev, token) => (token ? `${appBase()}#invite-${ev.id}-${token}` : eventLink(ev));
+// On the published site, links go through /i/… so chat apps can show the event's own preview.
+const previewLinks = () => { try { return !!BACKEND.siteUrl && new URL(BACKEND.siteUrl).origin === location.origin; } catch { return false; } };
+export const eventLink = (ev) => (previewLinks() ? `${location.origin}/i/${ev.id}` : `${appBase()}#invite-${ev.id}`);
+export const personalLinkFor = (ev, token) => (!token ? eventLink(ev) : previewLinks() ? `${location.origin}/i/${ev.id}/${token}` : `${appBase()}#invite-${ev.id}-${token}`);
 
 export function inviteText(ev, guestName, link, { kind = 'invite', host } = {}) {
   const hi = guestName ? `Hi ${guestName.trim().split(/\s+/)[0]}! ` : 'Hi! ';

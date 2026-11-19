@@ -1,3 +1,7 @@
 # Static site: no build step. Publish the repository root.
 [build]
   publish = "."
+
+# Link previews for invitation links (/i/...): see netlify/functions/invite.mjs.
+[functions]
+  directory = "netlify/functions"

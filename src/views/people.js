@@ -123,7 +123,7 @@ function Guests({ ev }) {
   const list = all.filter((i) => (f === 'all' || (f === 'in' ? i.checkedIn : i.rsvp.status === f)) && (i.name + ' ' + i.group + ' ' + i.rsvp.dietary).toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => rank[a.rsvp.status] - rank[b.rsvp.status] || (a.rsvp.arrival || '99').localeCompare(b.rsvp.arrival || '99'));
   const pages = Math.ceil(list.length / per); const shown = list.slice(page * per, page * per + per);
-  const link = `${location.href.split('#')[0]}#invite-${ev.id}`;
+  const link = eventLink(ev);
   const filters = [['all', 'All', st.invited], ['going', 'Going', st.going], ['maybe', 'Maybe', st.maybe], ['pending', 'No reply', st.pending], ['declined', "Can't go", st.declined], ...(has(ev, 'checkIn') ? [['in', 'Checked in', st.checkedIn]] : [])];
   return html`
     <div class="grid g4">

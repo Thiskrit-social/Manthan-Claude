@@ -244,3 +244,13 @@ Database: migration `007_bring_list_and_guest_note.sql`. The automatic email fun
 - **Chip in:** `events.extras.chipIn = { url, amount, note }`, shown as a Pay button once a guest has replied Going or Maybe. Only `https://` and `upi://` links are accepted. Money goes directly through that service; Gather never handles it.
 
 New Simple events start with the going list and comments on; Organised events with comments on. Both can be switched in the People tab or Setup → Extra tools. Database: migration `008_invite_social_and_chip_in.sql`.
+
+## Link previews in WhatsApp
+
+On the published site, invitation links look like `/i/<event>` (shared link) and `/i/<event>/<key>` (a guest's personal link). `netlify/functions/invite.mjs` answers them:
+
+- **Preview robots** (WhatsApp, iMessage, Telegram, Slack, Facebook, X, Discord…) get a small page with the event's title, "Hi Ravi! Priya invites you. Sat 12 Dec, 7:30pm · 14 Park Road. Tap to reply." and a picture: the event's uploaded cover photo, or the image for its theme (`og/theme-*.jpg`).
+- **People** are redirected straight to `/#invite-…`, the invitation page.
+- Details come from `guest_invite` with the public key, so an invite-only event shows only "You're invited" without a valid personal link. Pages are marked `noindex`. If the database is slow, the generic preview is returned after about 3.5 seconds.
+
+Links made anywhere other than `siteUrl` (in `src/backend-config.js`), such as a local copy, keep the `#invite-…` form. Emails keep the `#invite-…` form too. WhatsApp caches previews, so a link already shared shows its old preview.

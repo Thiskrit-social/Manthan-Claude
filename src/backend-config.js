@@ -7,4 +7,7 @@
 export const BACKEND = {
   url: 'https://bqofayrgxygsigbdugzu.supabase.co',
   anonKey: 'sb_publishable_Q_qdt_c-MeE9mIjvxbky_A_8GOQo0K0',
+  // Where the app is published. There, invitation links use /i/<event>/<key> so WhatsApp and other apps
+  // can show the event's own preview (netlify/functions/invite.mjs). Anywhere else they use #invite-….
+  siteUrl: 'https://manthan-gather.netlify.app/',
 };
